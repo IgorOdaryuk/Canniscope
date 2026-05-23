@@ -3,43 +3,78 @@ import Papa from "papaparse";
 
 // ─── INTENT FILTERS ───
 // These words signal a DIFFERENT intent — never group with plain service pages.
+// All matching is done via slug token (word) boundaries, not substring.
 
-const BRAND_WORDS = new Set([
+const BRAND_TOKENS = new Set([
   "sub-zero","subzero","lg","samsung","whirlpool","ge","thermador","viking",
   "wolf","bosch","kitchenaid","maytag","frigidaire","kenmore","amana","electrolux",
   "miele","speed-queen","jenn-air","jennair","dacor","fisher-paykel","haier","hisense",
 ]);
 
-const SYMPTOM_WORDS = new Set([
-  "not-cooling","not-heating","wont-drain","not-spinning","not-making-ice",
-  "wont-start","not-working","leaking","noisy","loud","vibrating","shaking",
-  "temperature","takes-too-long","wont-turn-on","wont-turn-off","error-code",
-  "not-draining","not-drying","not-dispensing","ice-buildup","frost",
-  "wont-close","wont-open","not-filling","overheating","smoking","burning-smell",
-  "tripping-breaker","beeping","flashing",
+// Symptom tokens: multi-word patterns matched as token sequences
+const SYMPTOM_PATTERNS = [
+  "not-cooling","not-heating","not-spinning","not-making-ice","not-draining",
+  "not-drying","not-dispensing","not-filling","not-working",
+  "wont-drain","wont-start","wont-turn-on","wont-turn-off","wont-close",
+  "wont-open","wont-light","wont-ignite","wont-heat",
+  "won-t-drain","won-t-start","won-t-turn-on","won-t-turn-off","won-t-close",
+  "won-t-open","won-t-light","won-t-ignite","won-t-heat",
+  "takes-too-long","ice-buildup","burning-smell","tripping-breaker","error-code",
+];
+const SYMPTOM_SINGLE = new Set([
+  "leaking","noisy","loud","vibrating","shaking","overheating",
+  "smoking","beeping","flashing","frost",
 ]);
 
-const MODIFIER_WORDS = new Set([
-  "cost","price","pricing","best","cheap","cheapest","free","near-me","near",
-  "same-day","emergency","affordable","top","rated","review","reviews",
+// Modifier tokens: matched as whole words
+const MODIFIER_TOKENS = new Set([
+  "cost","price","pricing","best","cheap","cheapest","free","near-me",
+  "same-day","emergency","affordable","rated","reviews","review",
   "how-much","estimate","quote","warranty","certified","licensed",
-  "professional","expert","trusted","reliable",
 ]);
 
-const CONTENT_WORDS = new Set([
+// Content tokens: matched as whole words
+const CONTENT_TOKENS = new Set([
   "guide","tips","vs","versus","comparison","how-to","diy","troubleshoot",
   "troubleshooting","signs","when-to","should-i","replacement",
   "maintenance","checklist","faq","common-problems","lifespan",
   "statistics","stats","history","recall","recalls",
 ]);
 
-// US state abbreviations for stripping
-const STATES = new Set([
-  "al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia",
-  "ks","ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj",
-  "nm","ny","nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt",
+// Informational / non-service pages — never group
+const INFORMATIONAL_TOKENS = new Set([
+  "about","contact","careers","become","join","team","hiring","apply",
+  "privacy","terms","sitemap","login","signup","register","account",
+  "blog","news","press","media","testimonials","portfolio","gallery",
+]);
+
+// Safe state abbreviations for trailing stripping.
+// Excluded: common English words (in, me, or, hi, al, de, la, ma, pa, id, oh, ok)
+const SAFE_STATES = new Set([
+  "ak","az","ar","ca","co","ct","fl","ga","ia","il",
+  "ks","ky","md","mi","mn","ms","mo","mt","ne","nv","nh","nj",
+  "nm","ny","nc","nd","ri","sc","sd","tn","tx","ut","vt",
   "va","wa","wv","wi","wy","dc",
 ]);
+
+// ─── TOKEN MATCHING HELPERS ───
+
+function slugContainsPattern(slug, pattern) {
+  // Check if slug contains the exact multi-word pattern at token boundaries.
+  // "not-cooling" in "refrigerator-not-cooling-repair" → true
+  // "not" in "knot-repair" → false (checked separately as single token)
+  return slug === pattern ||
+    slug.startsWith(pattern + "-") ||
+    slug.endsWith("-" + pattern) ||
+    slug.includes("-" + pattern + "-");
+}
+
+function slugHasToken(slug, token) {
+  // For single-word tokens, match at hyphen boundaries.
+  if (token.includes("-")) return slugContainsPattern(slug, token);
+  const words = slug.split("-");
+  return words.includes(token);
+}
 
 // ─── URL PARSER ───
 
@@ -79,21 +114,38 @@ function classifyURL(url) {
 
     const slugWords = slug.split("-");
 
-    // ── CHECK INTENT ──
+    // ── INFORMATIONAL PAGE? ──
+    // If the first meaningful word is informational, skip entirely
+    if (INFORMATIONAL_TOKENS.has(slugWords[0])) return null;
+
+    // ── CHECK INTENT (token-boundary matching) ──
+
+    // Brand: single tokens + multi-word brands
     for (const w of slugWords) {
-      if (BRAND_WORDS.has(w)) return { slug, section, intent: "brand" };
+      if (BRAND_TOKENS.has(w)) return { slug, section, intent: "brand" };
     }
-    for (const brand of BRAND_WORDS) {
-      if (brand.includes("-") && slug.includes(brand)) return { slug, section, intent: "brand" };
+    for (const brand of BRAND_TOKENS) {
+      if (brand.includes("-") && slugContainsPattern(slug, brand)) {
+        return { slug, section, intent: "brand" };
+      }
     }
-    for (const symptom of SYMPTOM_WORDS) {
-      if (slug.includes(symptom)) return { slug, section, intent: "symptom" };
+
+    // Symptom: multi-word patterns first, then single tokens
+    for (const pattern of SYMPTOM_PATTERNS) {
+      if (slugContainsPattern(slug, pattern)) return { slug, section, intent: "symptom" };
     }
-    for (const mod of MODIFIER_WORDS) {
-      if (slug.includes(mod)) return { slug, section, intent: "modifier" };
+    for (const token of SYMPTOM_SINGLE) {
+      if (slugHasToken(slug, token)) return { slug, section, intent: "symptom" };
     }
-    for (const cw of CONTENT_WORDS) {
-      if (slug.includes(cw)) return { slug, section, intent: "content" };
+
+    // Modifier: whole-word matching
+    for (const token of MODIFIER_TOKENS) {
+      if (slugHasToken(slug, token)) return { slug, section, intent: "modifier" };
+    }
+
+    // Content: whole-word matching
+    for (const token of CONTENT_TOKENS) {
+      if (slugHasToken(slug, token)) return { slug, section, intent: "content" };
     }
 
     // ── EXTRACT SERVICE + GEO ──
@@ -102,8 +154,9 @@ function classifyURL(url) {
       .replace(/^in-/, "")
       .replace(/-in$/, "");
 
+    // Strip trailing state abbreviation (safe list only)
     const lastWord = normalized.split("-").pop();
-    if (lastWord && STATES.has(lastWord)) {
+    if (lastWord && SAFE_STATES.has(lastWord)) {
       normalized = normalized.replace(new RegExp(`-${lastWord}$`), "");
     }
 
@@ -118,24 +171,93 @@ function classifyURL(url) {
       }
     }
 
-    let service, geo;
+    // ── FIX #1: No service term → not groupable ──
+    if (serviceEnd < 0) return null;
 
-    if (serviceEnd >= 0) {
-      service = nWords.slice(0, serviceEnd + 1).join("-");
-      geo = nWords.slice(serviceEnd + 1).filter(w => w.length > 0).join("-") || null;
-    } else {
-      service = normalized;
-      geo = null;
-    }
+    const service = nWords.slice(0, serviceEnd + 1).join("-");
+    const geoRaw = nWords.slice(serviceEnd + 1).filter(w => w.length > 0).join("-") || null;
 
-    service = service.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-    if (geo) geo = geo.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
-    if (!service || service.length < 3) return null;
+    const cleanService = service.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+    const geo = geoRaw ? geoRaw.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-") : null;
+    if (!cleanService || cleanService.length < 3) return null;
 
-    return { service, geo: geo || null, section, intent: "service", slug };
+    return { service: cleanService, geo, section, intent: "service", slug };
   } catch {
     return null;
   }
+}
+
+// ─── TRAILING SLASH DETECTION ───
+
+function findTrailingSlashDupes(pagesData) {
+  const pages = pagesData.map(row => ({
+    url: (row["Top pages"] || "").trim(),
+    clicks: parseInt(row["Clicks"]) || 0,
+    impressions: parseInt(String(row["Impressions"]).replace(/,/g, "")) || 0,
+    ctr: parseFloat(String(row["CTR"]).replace("%", "")) || 0,
+    position: parseFloat(row["Position"]) || 0,
+  })).filter(p => p.url);
+
+  // Build map: normalized URL (no trailing slash) → list of actual URLs
+  const map = {};
+  pages.forEach(p => {
+    try {
+      const u = new URL(p.url);
+      const key = u.origin + u.pathname.replace(/\/+$/, "") + u.search;
+      if (!map[key]) map[key] = [];
+      map[key].push(p);
+    } catch {}
+  });
+
+  const dupes = [];
+  Object.values(map).forEach(group => {
+    if (group.length < 2) return;
+    // Check that they truly differ only by trailing slash
+    const pathnames = group.map(p => getPathname(p.url));
+    const stripped = pathnames.map(p => p.replace(/\/+$/, ""));
+    if (new Set(stripped).size !== 1) return; // differ by more than slash
+
+    const sorted = [...group].sort(
+      (a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.position - b.position
+    );
+    const winner = sorted[0];
+    const totalClicks = sorted.reduce((s, p) => s + p.clicks, 0);
+    const totalImpressions = sorted.reduce((s, p) => s + p.impressions, 0);
+    const winnerPath = getPathname(winner.url);
+
+    // Slug for label
+    const slugRaw = winnerPath.replace(/^\//, "").replace(/\/+$/, "").split("/").pop() || winnerPath;
+    const label = slugRaw.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase()) + " — Trailing Slash";
+
+    const pageActions = sorted.map((p, i) => ({
+      ...p,
+      section: getSection(p.url),
+      action: i === 0
+        ? "KEEP — canonical URL"
+        : "Technical fix: set server redirect or canonical tag",
+    }));
+
+    dupes.push({
+      label,
+      service: slugRaw,
+      geo: "trailing-slash",
+      pages: pageActions,
+      pageCount: sorted.length,
+      totalClicks,
+      totalImpressions,
+      sections: [...new Set(pageActions.map(p => p.section))],
+      winner,
+      risk: "LOW",
+      score: 10,
+      reasons: ["Trailing slash duplicate — same content, different URL format"],
+      recommendation:
+        `Technical duplicate: ${winnerPath} exists with and without trailing slash. ` +
+        `Fix in server config (301 redirect) or set rel=canonical. Not an SEO intent conflict.`,
+      isTechnical: true,
+    });
+  });
+
+  return dupes;
 }
 
 // ─── SEVERITY SCORING ───
@@ -144,20 +266,17 @@ function computeSeverity(sorted, sections) {
   let score = 0;
   const reasons = [];
 
-  // Factor 1: cross-section = strongest signal
   if (sections.length >= 2) {
     score += 40;
     reasons.push(`Same target across ${sections.join(" + ")}`);
   }
 
-  // Factor 2: both URLs getting traffic (not just impressions)
   const withClicks = sorted.filter(p => p.clicks > 0);
   if (withClicks.length >= 2) {
     score += 25;
     reasons.push(`${withClicks.length} URLs getting clicks (split traffic)`);
   }
 
-  // Factor 3: close positions (both ranking, competing)
   if (sorted.length >= 2) {
     const positions = sorted.map(p => p.position).filter(p => p > 0 && p <= 50);
     if (positions.length >= 2) {
@@ -172,7 +291,6 @@ function computeSeverity(sorted, sections) {
     }
   }
 
-  // Factor 4: high impression volume = high opportunity cost
   const totalImpr = sorted.reduce((s, p) => s + p.impressions, 0);
   if (totalImpr >= 2000) {
     score += 15;
@@ -182,13 +300,11 @@ function computeSeverity(sorted, sections) {
     reasons.push(`Moderate volume (${totalImpr.toLocaleString()} impressions)`);
   }
 
-  // Factor 5: 3+ URLs = more fragmentation
   if (sorted.length >= 3) {
     score += 10;
     reasons.push(`${sorted.length} URLs fragmenting authority`);
   }
 
-  // Determine risk level from score
   let risk;
   if (score >= 45) risk = "HIGH";
   else if (score >= 25) risk = "MEDIUM";
@@ -223,6 +339,9 @@ function analyzePages(pagesData) {
     }
   });
 
+  // Collect URLs already in SEO conflicts (to avoid double-counting with trailing slash)
+  const seoConflictURLs = new Set();
+
   const conflicts = Object.entries(groups)
     .filter(([_, ps]) => ps.length >= 2 && ps.length <= 5)
     .map(([key, ps]) => {
@@ -241,7 +360,6 @@ function analyzePages(pagesData) {
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      // Severity with reasons
       const { risk, score, reasons } = computeSeverity(sorted, sections);
 
       const winnerPath = getPathname(winner.url);
@@ -259,7 +377,6 @@ function analyzePages(pagesData) {
           `Redirect weaker URLs with 301 to the winner, or add canonical tags.`;
       }
 
-      // Per-page actions
       const pageActions = sorted.map((p, i) => {
         if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
         if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
@@ -271,9 +388,12 @@ function analyzePages(pagesData) {
         return { ...p, action: "301 redirect to winner (same section duplicate)" };
       });
 
+      sorted.forEach(p => seoConflictURLs.add(p.url));
+
       return {
         label, service, geo, pages: pageActions, pageCount: sorted.length,
         totalClicks, totalImpressions, sections, winner, risk, score, reasons, recommendation,
+        isTechnical: false,
       };
     })
     .sort((a, b) => {
@@ -282,7 +402,11 @@ function analyzePages(pagesData) {
       return b.score - a.score;
     });
 
-  return conflicts;
+  // Find trailing-slash dupes (exclude URLs already in SEO conflicts)
+  const trailingSlashDupes = findTrailingSlashDupes(pagesData)
+    .filter(d => !d.pages.some(p => seoConflictURLs.has(p.url)));
+
+  return [...conflicts, ...trailingSlashDupes];
 }
 
 // ─── REPORT TEXT ───
@@ -293,24 +417,29 @@ function generateReportText(conflicts) {
   r += "  CANNISCOPE — Duplicate URL Targets Report\n";
   r += "=================================================\n\n";
 
-  const high = conflicts.filter(c => c.risk === "HIGH").length;
-  const medium = conflicts.filter(c => c.risk === "MEDIUM").length;
-  const low = conflicts.filter(c => c.risk === "LOW").length;
+  const seo = conflicts.filter(c => !c.isTechnical);
+  const tech = conflicts.filter(c => c.isTechnical);
+
+  const high = seo.filter(c => c.risk === "HIGH").length;
+  const medium = seo.filter(c => c.risk === "MEDIUM").length;
+  const low = seo.filter(c => c.risk === "LOW").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
 
   r += `Summary:\n`;
-  r += `  Duplicate clusters: ${conflicts.length}\n`;
+  r += `  SEO duplicate clusters: ${seo.length}\n`;
+  r += `  Technical duplicates: ${tech.length}\n`;
   r += `  URLs involved: ${totalURLs}\n`;
   r += `  HIGH: ${high} | MEDIUM: ${medium} | LOW: ${low}\n\n`;
 
   const buckets = [
-    { label: "HIGH RISK — FIX FIRST", filter: "HIGH" },
-    { label: "MEDIUM RISK — CHECK", filter: "MEDIUM" },
-    { label: "LOW RISK — MONITOR", filter: "LOW" },
+    { label: "HIGH RISK — FIX FIRST", filter: c => !c.isTechnical && c.risk === "HIGH" },
+    { label: "MEDIUM RISK — CHECK", filter: c => !c.isTechnical && c.risk === "MEDIUM" },
+    { label: "LOW RISK — MONITOR", filter: c => !c.isTechnical && c.risk === "LOW" },
+    { label: "TECHNICAL DUPLICATES", filter: c => c.isTechnical },
   ];
 
   buckets.forEach(sec => {
-    const items = conflicts.filter(c => c.risk === sec.filter);
+    const items = conflicts.filter(sec.filter);
     if (items.length === 0) return;
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
@@ -339,12 +468,13 @@ function generateReportText(conflicts) {
 // ─── CSV EXPORT ───
 
 function generateCSV(conflicts) {
-  const rows = [["Cluster","Risk","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
+  const rows = [["Cluster","Type","Risk","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
   conflicts.forEach(c => {
     const whyFlagged = c.reasons.join("; ");
+    const type = c.isTechnical ? "Technical" : "SEO";
     c.pages.forEach(p => {
       rows.push([
-        c.label, c.risk, c.score, c.service, c.geo || "generic",
+        c.label, type, c.risk, c.score, c.service, c.geo || "generic",
         c.sections.join(" + "), p.url, p.clicks, p.impressions,
         p.ctr + "%", p.position.toFixed(1), p.section, p.action, whyFlagged,
       ]);
@@ -405,6 +535,8 @@ function ActionBadge({ action }) {
     bg = "#E8F5E9"; color = "#2E7D32";
   } else if (action.startsWith("301")) {
     bg = "#FFF3E0"; color = "#E65100";
+  } else if (action.startsWith("Technical")) {
+    bg = "#E3F2FD"; color = "#1565C0";
   } else {
     bg = "#FFF8E1"; color = "#F57F17";
   }
@@ -428,12 +560,13 @@ function WhyFlagged({ reasons }) {
 
 function ConflictCard({ conflict: c }) {
   const [open, setOpen] = useState(false);
-  const rc = c.risk === "HIGH" ? "#E03E2D" : c.risk === "MEDIUM" ? "#E67E22" : "#27AE60";
+  const rc = c.isTechnical ? "#1565C0" : c.risk === "HIGH" ? "#E03E2D" : c.risk === "MEDIUM" ? "#E67E22" : "#27AE60";
+  const badge = c.isTechnical ? "TECH" : c.risk;
 
   return (
     <div style={s.card(open, rc)}>
       <div onClick={() => setOpen(!open)} style={{ padding: "16px 20px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14 }}>
-        <span style={{ padding: "3px 10px", borderRadius: 20, background: rc + "14", color: rc, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{c.risk}</span>
+        <span style={{ padding: "3px 10px", borderRadius: 20, background: rc + "14", color: rc, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{badge}</span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 2 }}>{c.label}</div>
           <div style={{ fontSize: 13, color: "#999" }}>
@@ -587,9 +720,11 @@ export default function CanniScope() {
   }
 
   // ── RESULTS SCREEN ──
-  const high = conflicts.filter(c => c.risk === "HIGH").length;
-  const medium = conflicts.filter(c => c.risk === "MEDIUM").length;
-  const low = conflicts.filter(c => c.risk === "LOW").length;
+  const seo = conflicts.filter(c => !c.isTechnical);
+  const tech = conflicts.filter(c => c.isTechnical);
+  const high = seo.filter(c => c.risk === "HIGH").length;
+  const medium = seo.filter(c => c.risk === "MEDIUM").length;
+  const low = seo.filter(c => c.risk === "LOW").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
 
   return (
@@ -601,14 +736,14 @@ export default function CanniScope() {
             {high > 0 ? `${high} high-risk duplicate clusters found` : "Analysis Complete"}
           </h2>
           <p style={{ fontSize: 14, color: "#999", margin: "4px 0 0" }}>
-            {conflicts.length} clusters · {totalURLs} URLs with duplicate targets
+            {seo.length} SEO clusters · {tech.length} technical · {totalURLs} URLs
           </p>
         </div>
 
         <div style={s.statRow}>
           {[
-            { label: "Clusters", val: conflicts.length, color: "#1a1a1a" },
-            { label: "URLs", val: totalURLs, color: "#1a1a1a" },
+            { label: "SEO", val: seo.length, color: "#1a1a1a" },
+            { label: "Technical", val: tech.length, color: "#1565C0" },
             { label: "High", val: high, color: "#E03E2D" },
             { label: "Medium", val: medium, color: "#E67E22" },
           ].map((item, i) => (
@@ -629,19 +764,25 @@ export default function CanniScope() {
         {high > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div style={s.sectionTitle("#E03E2D")}>🔴 High Risk — Fix First</div>
-            {conflicts.filter(c => c.risk === "HIGH").map((c, i) => <ConflictCard key={i} conflict={c} />)}
+            {seo.filter(c => c.risk === "HIGH").map((c, i) => <ConflictCard key={i} conflict={c} />)}
           </div>
         )}
         {medium > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div style={s.sectionTitle("#E67E22")}>🟡 Medium Risk — Check</div>
-            {conflicts.filter(c => c.risk === "MEDIUM").map((c, i) => <ConflictCard key={i} conflict={c} />)}
+            {seo.filter(c => c.risk === "MEDIUM").map((c, i) => <ConflictCard key={i} conflict={c} />)}
           </div>
         )}
         {low > 0 && (
           <div style={{ marginBottom: 32 }}>
             <div style={s.sectionTitle("#27AE60")}>🟢 Low Risk — Monitor</div>
-            {conflicts.filter(c => c.risk === "LOW").map((c, i) => <ConflictCard key={i} conflict={c} />)}
+            {seo.filter(c => c.risk === "LOW").map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
+        {tech.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div style={s.sectionTitle("#1565C0")}>🔧 Technical Duplicates</div>
+            {tech.map((c, i) => <ConflictCard key={i} conflict={c} />)}
           </div>
         )}
 
