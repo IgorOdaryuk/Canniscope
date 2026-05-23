@@ -338,9 +338,16 @@ function analyzePages(pagesData) {
     position: parseFloat(row["Position"]) || 0,
   })).filter(p => p.url);
 
+  // Track ignored intents for "Why NOT flagged" summary
+  const ignoredCounts = { brand: 0, symptom: 0, modifier: 0, content: 0, informational: 0, noServiceTerm: 0 };
+
   const classified = pages.map(p => {
     const c = classifyURL(p.url);
-    if (!c || c.intent !== "service") return null;
+    if (!c) { ignoredCounts.noServiceTerm++; return null; }
+    if (c.intent === "brand") { ignoredCounts.brand++; return null; }
+    if (c.intent === "symptom") { ignoredCounts.symptom++; return null; }
+    if (c.intent === "modifier") { ignoredCounts.modifier++; return null; }
+    if (c.intent === "content") { ignoredCounts.content++; return null; }
     return { ...p, ...c };
   }).filter(Boolean);
 
@@ -391,19 +398,29 @@ function analyzePages(pagesData) {
         recommendation =
           `Likely intentional multi-location architecture. ` +
           `${winnerPath} (ROOT) and geo landing pages in ${sections.filter(s => s !== "ROOT").join(" + ")} ` +
-          `may serve different purposes. Review manually before redirecting — ` +
-          `if both pages have unique content and serve different user intents, this is fine.`;
+          `often serve different purposes in local SEO. Review manually — ` +
+          `if both pages have unique content and different user intents, no action needed.`;
         reasons.push("⚠ Possibly intentional architecture (ROOT + geo section)");
+      } else if (confidence === "HIGH" && sections.length >= 2) {
+        recommendation =
+          `High confidence: ${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ` +
+          `Winner by GSC data: ${winnerPath}. Likely safe to consolidate — ` +
+          `verify content overlap before redirecting.`;
       } else if (sections.length >= 2) {
         recommendation =
-          `${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ` +
-          `Winner by GSC data: ${winnerPath}. Consolidate — redirect ` +
-          `weaker pages with 301, or clearly differentiate each page's intent and content.`;
-      } else {
+          `Possible duplicate target across ${sections.join(" + ")}. ` +
+          `Winner by GSC data: ${winnerPath}. Review whether pages serve ` +
+          `different intents before consolidating.`;
+      } else if (confidence === "HIGH") {
         recommendation =
           `${sorted.length} URL variants with the same target in ${sections[0]}. ` +
           `Winner by GSC data: ${winnerPath}. ` +
-          `Redirect weaker URLs with 301 to the winner, or add canonical tags.`;
+          `Likely safe to consolidate with 301 or canonical.`;
+      } else {
+        recommendation =
+          `${sorted.length} URL variants with similar targets in ${sections[0]}. ` +
+          `Winner by GSC data: ${winnerPath}. ` +
+          `Review manually — may be duplicate or intentional variation.`;
       }
 
       const pageActions = sorted.map((p, i) => {
@@ -421,13 +438,23 @@ function analyzePages(pagesData) {
         if (isLikelyArchitecture && p.section !== winner.section) {
           return { ...p, action: "Review — may be intentional geo architecture" };
         }
-        if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
-          return { ...p, action: "301 redirect to winner" };
+
+        // Only say "likely safe to redirect" with high confidence
+        if (confidence === "HIGH") {
+          if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
+            return { ...p, action: "Likely safe to 301 redirect to winner" };
+          }
+          if (p.section !== winner.section) {
+            return { ...p, action: "Check if 301/canonical exists → likely safe to consolidate" };
+          }
+          return { ...p, action: "Likely safe to 301 redirect (same section duplicate)" };
         }
+
+        // Medium/low confidence → always review
         if (p.section !== winner.section) {
-          return { ...p, action: "Check if 301/canonical exists → if not, redirect to winner" };
+          return { ...p, action: "Review — possible duplicate across sections" };
         }
-        return { ...p, action: "301 redirect to winner (same section duplicate)" };
+        return { ...p, action: "Review — possible same-section duplicate" };
       });
 
       sorted.forEach(p => seoConflictURLs.add(p.url));
@@ -449,7 +476,7 @@ function analyzePages(pagesData) {
   const trailingSlashDupes = findTrailingSlashDupes(pagesData)
     .filter(d => !d.pages.some(p => seoConflictURLs.has(p.url)));
 
-  return [...conflicts, ...trailingSlashDupes];
+  return { conflicts: [...conflicts, ...trailingSlashDupes], ignoredCounts, totalPages: pages.length };
 }
 
 // ─── REPORT TEXT ───
@@ -576,7 +603,7 @@ function ActionBadge({ action }) {
   let bg, color;
   if (action.startsWith("KEEP")) {
     bg = "#E8F5E9"; color = "#2E7D32";
-  } else if (action.startsWith("301")) {
+  } else if (action.startsWith("Likely safe")) {
     bg = "#FFF3E0"; color = "#E65100";
   } else if (action.startsWith("Technical")) {
     bg = "#E3F2FD"; color = "#1565C0";
@@ -658,6 +685,8 @@ function ConflictCard({ conflict: c }) {
 
 export default function CanniScope() {
   const [conflicts, setConflicts] = useState(null);
+  const [ignoredCounts, setIgnoredCounts] = useState(null);
+  const [totalPages, setTotalPages] = useState(0);
   const [reportText, setReportText] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
@@ -688,7 +717,9 @@ export default function CanniScope() {
               setLoading(false);
               return;
             }
-            const results = analyzePages(pagesData);
+            const { conflicts: results, ignoredCounts: ignored, totalPages: tp } = analyzePages(pagesData);
+            setIgnoredCounts(ignored);
+            setTotalPages(tp);
             if (results.length === 0) {
               setCleanMsg("No duplicate URL targets found — your site structure looks clean.");
               setLoading(false);
@@ -726,7 +757,7 @@ export default function CanniScope() {
   };
 
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); };
+  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); };
 
   // ── UPLOAD SCREEN ──
   if (!conflicts) {
@@ -791,6 +822,10 @@ export default function CanniScope() {
           </p>
         </div>
 
+        <div style={{ padding: "10px 16px", background: "#FFF8E1", border: "1px solid #FFE082", borderRadius: 8, marginBottom: 20, fontSize: 13, color: "#F57F17", lineHeight: 1.5 }}>
+          <span style={{ fontWeight: 700 }}>Experimental beta</span> — may produce false positives. Always review manually before making redirects.
+        </div>
+
         <div style={s.statRow}>
           {[
             { label: "SEO", val: seo.length, color: "#1a1a1a" },
@@ -837,8 +872,23 @@ export default function CanniScope() {
           </div>
         )}
 
+        {ignoredCounts && (
+          <div style={{ marginBottom: 32, padding: "20px 24px", background: "#fff", borderRadius: 12, border: "1px solid #eee" }}>
+            <div style={{ fontWeight: 700, color: "#999", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 10 }}>Why NOT flagged</div>
+            <div style={{ fontSize: 13, color: "#777", lineHeight: 1.8 }}>
+              {totalPages > 0 && <div>Analyzed <span style={{ color: "#1a1a1a", fontWeight: 600 }}>{totalPages}</span> pages total</div>}
+              {ignoredCounts.brand > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.brand}</span> brand-specific pages skipped (different intent)</div>}
+              {ignoredCounts.symptom > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.symptom}</span> symptom/troubleshooting pages skipped</div>}
+              {ignoredCounts.modifier > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.modifier}</span> modifier pages skipped (cost, best, near-me, etc.)</div>}
+              {ignoredCounts.content > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.content}</span> content/informational pages skipped (guides, tips, FAQ, etc.)</div>}
+              {ignoredCounts.noServiceTerm > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.noServiceTerm}</span> non-service pages skipped (about, contact, blog, etc.)</div>}
+              <div style={{ marginTop: 8, fontSize: 12, color: "#bbb" }}>These pages have different search intent and are not considered duplicate targets.</div>
+            </div>
+          </div>
+        )}
+
         <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: "#ccc", letterSpacing: 1.5, textTransform: "uppercase" }}>
-          CanniScope · Duplicate URL Target Detector
+          CanniScope · Experimental Beta
         </div>
       </div>
     </div>
