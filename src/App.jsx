@@ -1,104 +1,172 @@
 import { useState } from "react";
 import Papa from "papaparse";
 
-// Known cities/geos to normalize
-const CITIES = {
-  "tampa":"tampa","tampa-fl":"tampa","tampa-bay":"tampa",
-  "wesley-chapel":"wesley-chapel","wesley-chapel-fl":"wesley-chapel",
-  "brandon":"brandon","brandon-fl":"brandon","sarasota":"sarasota","sarasota-fl":"sarasota",
-  "miami":"miami","miami-fl":"miami","doral":"doral","doral-fl":"doral",
-  "coral-gables":"coral-gables","coral-gables-fl":"coral-gables",
-  "bal-harbour":"bal-harbour","bal-harbour-fl":"bal-harbour",
-  "delray-beach":"delray-beach","delray-beach-fl":"delray-beach",
-  "charlotte":"charlotte","charlotte-nc":"charlotte",
-  "concord":"concord","concord-nc":"concord",
-  "fort-mill":"fort-mill","fort-mill-sc":"fort-mill",
-  "belmont":"belmont","belmont-charlotte-nc":"belmont",
-  "ballantyne":"ballantyne","ballantyne-nc":"ballantyne",
-  "jacksonville":"jacksonville","jacksonville-fl":"jacksonville",
-  "jacksonville-beach":"jacksonville-beach","jacksonville-beach-fl":"jacksonville-beach",
-  "atlanta":"atlanta","atlanta-ga":"atlanta",
-  "roswell":"roswell","roswell-ga":"roswell",
-  "alpharetta":"alpharetta","alpharetta-ga":"alpharetta",
-  "chastain-park-atlanta-ga":"chastain-park",
-  "winder":"winder","winder-ga":"winder",
-  "philadelphia":"philadelphia",
-};
+// ─── INTENT FILTERS ───
+// These words signal a DIFFERENT intent — never group with plain service pages.
 
-// Known services to normalize
-const SERVICES = [
-  "refrigerator-repair","fridge-repair",
-  "washer-repair","washing-machine-repair",
-  "dryer-repair",
-  "oven-repair",
-  "cooktop-repair",
-  "microwave-repair",
-  "dishwasher-repair",
-  "icemaker-repair","ice-maker-repair",
-  "freezer-repair",
-  "appliance-repair",
-  "range-repair",
-  "stove-repair",
-];
+const BRAND_WORDS = new Set([
+  "sub-zero","subzero","lg","samsung","whirlpool","ge","thermador","viking",
+  "wolf","bosch","kitchenaid","maytag","frigidaire","kenmore","amana","electrolux",
+  "miele","speed-queen","jenn-air","jennair","dacor","fisher-paykel","haier","hisense",
+]);
 
-const SERVICE_NORMALIZE = {
-  "fridge-repair":"refrigerator-repair",
-  "washing-machine-repair":"washer-repair",
-  "ice-maker-repair":"icemaker-repair",
-};
+const SYMPTOM_WORDS = new Set([
+  "not-cooling","not-heating","wont-drain","not-spinning","not-making-ice",
+  "wont-start","not-working","leaking","noisy","loud","vibrating","shaking",
+  "temperature","takes-too-long","wont-turn-on","wont-turn-off","error-code",
+  "not-draining","not-drying","not-dispensing","ice-buildup","frost",
+  "wont-close","wont-open","not-filling","overheating","smoking","burning-smell",
+  "tripping-breaker","beeping","flashing",
+]);
+
+const MODIFIER_WORDS = new Set([
+  "cost","price","pricing","best","cheap","cheapest","free","near-me","near",
+  "same-day","emergency","affordable","top","rated","review","reviews",
+  "how-much","estimate","quote","warranty","certified","licensed",
+  "professional","expert","trusted","reliable",
+]);
+
+const CONTENT_WORDS = new Set([
+  "guide","tips","vs","versus","comparison","how-to","diy","troubleshoot",
+  "troubleshooting","signs","when-to","should-i","replacement",
+  "maintenance","checklist","faq","common-problems","lifespan",
+]);
+
+// US state abbreviations for stripping
+const STATES = new Set([
+  "al","ak","az","ar","ca","co","ct","de","fl","ga","hi","id","il","in","ia",
+  "ks","ky","la","me","md","ma","mi","mn","ms","mo","mt","ne","nv","nh","nj",
+  "nm","ny","nc","nd","oh","ok","or","pa","ri","sc","sd","tn","tx","ut","vt",
+  "va","wa","wv","wi","wy","dc",
+]);
+
+// ─── URL PARSER ───
 
 function getSection(url) {
   try {
-    const path = new URL(url).pathname;
-    if (path.startsWith("/service-area/")) return "SERVICE AREA";
+    const path = new URL(url).pathname.toLowerCase();
+    if (path.startsWith("/service-area/")) return "SERVICE-AREA";
     if (path.startsWith("/locations/")) return "LOCATIONS";
     if (path.startsWith("/services/")) return "SERVICES";
     if (path.startsWith("/category/")) return "CATEGORY";
+    if (path.startsWith("/blog/")) return "BLOG";
     return "ROOT";
-  } catch { return "ROOT"; }
+  } catch {
+    return "ROOT";
+  }
 }
 
-function parseServiceAndGeo(url) {
+function getPathname(url) {
+  try { return new URL(url).pathname; } catch { return url; }
+}
+
+function classifyURL(url) {
+  // Returns { service, geo, section, intent } or null if URL is not groupable.
+  // intent = "service" | "brand" | "symptom" | "modifier" | "content"
+  // Only "service" intent pages get grouped for cannibalization.
+
   try {
-    let path = new URL(url).pathname.replace(/\/$/, "").replace(/^\//, "");
-    // Remove known prefixes
-    path = path.replace(/^(service-area|locations|services|category)\//, "");
-    // Remove city folder prefixes like "tampa/" "charlotte/" "atlanta/" "miami/"
-    path = path.replace(/^(tampa|charlotte|atlanta|miami|jacksonville)\//, "");
+    let path = new URL(url).pathname.toLowerCase().replace(/\/+$/, "").replace(/^\//, "");
+    const section = getSection(url);
 
-    const slug = path;
+    // Strip section prefix and city-folder prefix
+    // e.g. "locations/jacksonville/dryer-repair-jacksonville-beach-fl" → "dryer-repair-jacksonville-beach-fl"
+    // e.g. "service-area/appliance-repair-in-atlanta" → "appliance-repair-in-atlanta"
+    const parts = path.split("/").filter(Boolean);
 
-    // Find service
-    let service = null;
-    for (const svc of SERVICES) {
-      if (slug.includes(svc)) {
-        service = SERVICE_NORMALIZE[svc] || svc;
+    // Remove known section prefixes
+    if (["service-area","locations","services","category","blog"].includes(parts[0])) {
+      parts.shift();
+    }
+    // If locations/city-folder/slug, skip the city folder too
+    if (section === "LOCATIONS" && parts.length > 1) {
+      parts.shift(); // remove the city folder (e.g., "jacksonville")
+    }
+
+    const slug = parts[parts.length - 1] || "";
+    if (!slug || slug.length < 3) return null;
+
+    const slugWords = slug.split("-");
+
+    // ── CHECK INTENT ──
+
+    // Brand page?
+    for (const w of slugWords) {
+      if (BRAND_WORDS.has(w)) return { slug, section, intent: "brand" };
+    }
+    // Check multi-word brands
+    for (const brand of BRAND_WORDS) {
+      if (brand.includes("-") && slug.includes(brand)) return { slug, section, intent: "brand" };
+    }
+
+    // Symptom page?
+    for (const symptom of SYMPTOM_WORDS) {
+      if (slug.includes(symptom)) return { slug, section, intent: "symptom" };
+    }
+
+    // Modifier page?
+    for (const mod of MODIFIER_WORDS) {
+      if (slug.includes(mod)) return { slug, section, intent: "modifier" };
+    }
+
+    // Content page?
+    for (const cw of CONTENT_WORDS) {
+      if (slug.includes(cw)) return { slug, section, intent: "content" };
+    }
+
+    // ── EXTRACT SERVICE + GEO ──
+    // Normalize: remove "in", remove state abbreviations, then split into
+    // service-words and geo-words.
+    // Strategy: known service patterns are multi-word (e.g., "refrigerator-repair",
+    // "appliance-repair", "washer-repair"). Everything else after the service = geo.
+
+    let normalized = slug
+      .replace(/-in-/g, "-")         // "repair-in-atlanta" → "repair-atlanta"
+      .replace(/^in-/, "")           // "in-atlanta-..." → "atlanta-..."
+      .replace(/-in$/, "");          // "...-in" → "..."
+
+    // Strip trailing state abbreviation
+    const lastWord = normalized.split("-").pop();
+    if (lastWord && STATES.has(lastWord)) {
+      normalized = normalized.replace(new RegExp(`-${lastWord}$`), "");
+    }
+
+    // Find service pattern: look for "X-repair" or "repair" or "installation" etc.
+    // Service = all words up to and including "repair"/"installation"/"service"/"maintenance"
+    const serviceTerms = ["repair","installation","install","service","maintenance","replacement","cleaning"];
+    const nWords = normalized.split("-");
+    let serviceEnd = -1;
+
+    for (let i = 0; i < nWords.length; i++) {
+      if (serviceTerms.includes(nWords[i])) {
+        serviceEnd = i;
         break;
       }
     }
-    if (!service) return null;
 
-    // Find geo: check remaining slug parts against known cities
-    let geo = null;
-    const remaining = slug.replace(service, "").replace(/^-+|-+$/g, "").replace(/-?in-?/, "");
-    // Try to match the full remaining or parts of it
-    if (CITIES[remaining]) {
-      geo = CITIES[remaining];
+    let service, geo;
+
+    if (serviceEnd >= 0) {
+      service = nWords.slice(0, serviceEnd + 1).join("-");
+      geo = nWords.slice(serviceEnd + 1).filter(w => w.length > 0).join("-") || null;
     } else {
-      // Try matching substrings
-      for (const [pattern, normalized] of Object.entries(CITIES)) {
-        if (remaining.includes(pattern) && pattern.length > 3) {
-          geo = normalized;
-          break;
-        }
-      }
+      // No service term found — treat whole slug as a single unit
+      service = normalized;
+      geo = null;
     }
 
-    return { service, geo: geo || "generic" };
+    // Clean up
+    service = service.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+    if (geo) geo = geo.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
+    if (!service || service.length < 3) return null;
+
+    return { service, geo: geo || null, section, intent: "service", slug };
   } catch {
     return null;
   }
 }
+
+// ─── ANALYSIS ───
 
 function analyzePages(pagesData) {
   const pages = pagesData.map(row => ({
@@ -109,53 +177,89 @@ function analyzePages(pagesData) {
     position: parseFloat(row["Position"]) || 0,
   })).filter(p => p.url);
 
-  // Parse each page's service + geo
-  const parsed = pages.map(p => {
-    const sg = parseServiceAndGeo(p.url);
-    if (!sg) return null;
-    return { ...p, ...sg, section: getSection(p.url) };
+  // Classify every page
+  const classified = pages.map(p => {
+    const c = classifyURL(p.url);
+    if (!c || c.intent !== "service") return null;
+    return { ...p, ...c };
   }).filter(Boolean);
 
-  // Group by service + geo
+  // Group by exact service + exact geo
   const groups = {};
-  parsed.forEach(p => {
-    const key = `${p.service}|${p.geo}`;
+  classified.forEach(p => {
+    const key = `${p.service}|${p.geo || "generic"}`;
     if (!groups[key]) groups[key] = [];
-    groups[key].push(p);
+    // No exact-URL duplicates
+    if (!groups[key].find(x => x.url === p.url)) {
+      groups[key].push(p);
+    }
   });
 
-  // Only keep groups with 2+ pages (actual cannibalization)
+  // ── CRITICAL RULE: generic ≠ city pages ──
+  // /refrigerator-repair/ (generic, geo=null) should NOT group with
+  // /refrigerator-repair-tampa/ (geo=tampa).
+  // They're already in separate groups because geo differs.
+  // But double-check: a page with geo=null is "generic" key,
+  // a page with geo="tampa" is "tampa" key. ✓ They won't mix.
+
+  // Only keep groups with 2–5 pages
   const conflicts = Object.entries(groups)
-    .filter(([_, ps]) => ps.length >= 2)
+    .filter(([_, ps]) => ps.length >= 2 && ps.length <= 5)
     .map(([key, ps]) => {
       const [service, geo] = key.split("|");
-      const sorted = [...ps].sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions);
+      const sorted = [...ps].sort(
+        (a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.position - b.position
+      );
       const winner = sorted[0];
       const totalClicks = sorted.reduce((s, p) => s + p.clicks, 0);
       const totalImpressions = sorted.reduce((s, p) => s + p.impressions, 0);
       const sections = [...new Set(sorted.map(p => p.section))];
 
-      // Human-readable label
+      // Label
       const serviceName = service.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-      const geoName = geo === "generic" ? "Generic" : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+      const geoName = geo === "generic"
+        ? "Generic"
+        : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      // Risk based on impressions + page count
+      // Risk
       let risk = "LOW";
-      if (totalImpressions >= 1000 || sorted.length >= 3) risk = "HIGH";
-      else if (totalImpressions >= 200) risk = "MEDIUM";
+      if (sections.length >= 2 && totalImpressions >= 200) risk = "HIGH";
+      else if (totalImpressions >= 1000 || sorted.length >= 3) risk = "HIGH";
+      else if (totalImpressions >= 200 || sections.length >= 2) risk = "MEDIUM";
+
+      // Winner path
+      const winnerPath = getPathname(winner.url);
 
       // Recommendation
-      let recommendation = "";
-      const winnerPath = (() => { try { return new URL(winner.url).pathname; } catch { return winner.url; } })();
-      if (geo === "generic") {
-        recommendation = `Generic page duplicate. Winner by GSC data: ${winnerPath}. If weaker URLs are not already 301/canonical, consolidate.`;
+      let recommendation;
+      if (sections.length >= 2) {
+        recommendation =
+          `${sorted.length} pages compete for the same service+geo across ${sections.join(" + ")}. ` +
+          `Winner by GSC data: ${winnerPath}. Consolidate — redirect ` +
+          `weaker pages with 301, or clearly differentiate each page's intent and content.`;
       } else {
-        recommendation = `Same service + same geo + same intent. Winner by GSC data: ${winnerPath}. If weaker URLs are not already 301, redirect them. If 301 already exists, wait for Google.`;
+        recommendation =
+          `${sorted.length} URL variants with the same target in ${sections[0]}. ` +
+          `Winner by GSC data: ${winnerPath}. ` +
+          `Redirect weaker URLs with 301 to the winner, or add canonical tags.`;
       }
 
+      // Action items per page
+      const pageActions = sorted.map((p, i) => {
+        if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
+        // If same section as winner and much fewer clicks
+        if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
+          return { ...p, action: "301 redirect to winner" };
+        }
+        if (p.section !== winner.section) {
+          return { ...p, action: "Check if 301/canonical exists → if not, redirect to winner" };
+        }
+        return { ...p, action: "301 redirect to winner (same section duplicate)" };
+      });
+
       return {
-        label, service, geo, pages: sorted, pageCount: sorted.length,
+        label, service, geo, pages: pageActions, pageCount: sorted.length,
         totalClicks, totalImpressions, sections, winner, risk, recommendation,
       };
     })
@@ -168,44 +272,57 @@ function analyzePages(pagesData) {
   return conflicts;
 }
 
+// ─── REPORT TEXT ───
+
 function generateReportText(conflicts) {
   let r = "";
   r += "=================================================\n";
-  r += "  CANNISCOPE — Cannibalization Report\n";
+  r += "  CANNISCOPE — Duplicate URL Targets Report\n";
   r += "=================================================\n\n";
+
   const high = conflicts.filter(c => c.risk === "HIGH").length;
   const medium = conflicts.filter(c => c.risk === "MEDIUM").length;
   const low = conflicts.filter(c => c.risk === "LOW").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
-  r += `Summary:\n  Conflict groups: ${conflicts.length}\n  URLs involved: ${totalURLs}\n  HIGH: ${high} | MEDIUM: ${medium} | LOW: ${low}\n\n`;
 
-  [
-    { label: "HIGH RISK — Fix First", filter: "HIGH" },
-    { label: "MEDIUM RISK — Check", filter: "MEDIUM" },
-    { label: "LOW RISK — Monitor", filter: "LOW" },
-  ].forEach(sec => {
+  r += `Summary:\n`;
+  r += `  Duplicate clusters: ${conflicts.length}\n`;
+  r += `  URLs involved: ${totalURLs}\n`;
+  r += `  HIGH: ${high} | MEDIUM: ${medium} | LOW: ${low}\n\n`;
+
+  const buckets = [
+    { label: "HIGH RISK — FIX FIRST", filter: "HIGH" },
+    { label: "MEDIUM RISK — CHECK", filter: "MEDIUM" },
+    { label: "LOW RISK — MONITOR", filter: "LOW" },
+  ];
+
+  buckets.forEach(sec => {
     const items = conflicts.filter(c => c.risk === sec.filter);
     if (items.length === 0) return;
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
       r += `#${idx + 1}: ${c.label}\n`;
-      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impressions\n\n`;
-      r += `Winner: ${c.winner.url}\n\n`;
+      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr\n\n`;
       r += `${c.recommendation}\n\n`;
       r += `Pages:\n`;
       c.pages.forEach((p, pi) => {
-        let path; try { path = new URL(p.url).pathname; } catch { path = p.url; }
+        const path = getPathname(p.url);
         r += `  ${pi === 0 ? "👑" : "  "} ${path}\n`;
         r += `     Clicks: ${p.clicks} | Impr: ${p.impressions.toLocaleString()} | CTR: ${p.ctr}% | Pos: ${p.position.toFixed(1)} | ${p.section}\n`;
+        r += `     → ${p.action}\n`;
       });
-      r += `\n---\n\n`;
+      r += `\n- - - - - - - - - - - - - - - - - - - - - - - -\n\n`;
     });
   });
-  r += "Generated by CanniScope\n";
+
+  r += "=================================================\n";
+  r += "  Generated by CanniScope\n";
+  r += "=================================================\n";
   return r;
 }
 
 // ─── STYLES ───
+
 const font = "'DM Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif";
 const s = {
   page: { minHeight: "100vh", fontFamily: font, background: "#F7F7F5", color: "#1a1a1a", fontSize: 15, lineHeight: 1.5 },
@@ -226,6 +343,7 @@ const s = {
     fontSize: 14, color: "#888", lineHeight: 1.8,
   },
   error: { marginTop: 20, padding: "14px 18px", background: "#FFF0EE", border: "1px solid #FFCFC9", borderRadius: 10, fontSize: 14, color: "#C0392B" },
+  clean: { marginTop: 20, padding: "14px 18px", background: "#F0FAF0", border: "1px solid #C9FFCF", borderRadius: 10, fontSize: 14, color: "#27AE60" },
   statRow: { display: "flex", gap: 12, marginBottom: 24, flexWrap: "wrap" },
   stat: { flex: "1 1 100px", padding: "16px 20px", background: "#fff", borderRadius: 10, border: "1px solid #eee", textAlign: "center", minWidth: 100 },
   actionRow: { display: "flex", gap: 10, marginBottom: 32, flexWrap: "wrap" },
@@ -247,6 +365,24 @@ const s = {
   }),
 };
 
+// ─── COMPONENTS ───
+
+function ActionBadge({ action }) {
+  let bg, color, text;
+  if (action.startsWith("KEEP")) {
+    bg = "#E8F5E9"; color = "#2E7D32"; text = action;
+  } else if (action.startsWith("301")) {
+    bg = "#FFF3E0"; color = "#E65100"; text = action;
+  } else {
+    bg = "#FFF8E1"; color = "#F57F17"; text = action;
+  }
+  return (
+    <div style={{ marginTop: 4, fontSize: 12, padding: "3px 8px", background: bg, color, borderRadius: 4, display: "inline-block", fontWeight: 600 }}>
+      → {text}
+    </div>
+  );
+}
+
 function ConflictCard({ conflict: c }) {
   const [open, setOpen] = useState(false);
   const rc = c.risk === "HIGH" ? "#E03E2D" : c.risk === "MEDIUM" ? "#E67E22" : "#27AE60";
@@ -258,23 +394,20 @@ function ConflictCard({ conflict: c }) {
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 2 }}>{c.label}</div>
           <div style={{ fontSize: 13, color: "#999" }}>
-            {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impressions
+            {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impr
           </div>
         </div>
         <span style={{ color: "#ccc", fontSize: 14, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>▸</span>
       </div>
       {open && (
         <div>
-          <div style={{ margin: "0 20px 14px", fontSize: 13, color: "#777" }}>
-            Winner: <span style={{ color: "#1a1a1a", fontWeight: 600 }}>{c.winner.url}</span>
-          </div>
           <div style={{ margin: "0 20px 14px", padding: "14px 18px", background: rc + "08", borderLeft: `3px solid ${rc}`, borderRadius: "0 8px 8px 0", fontSize: 14, color: "#555", lineHeight: 1.6 }}>
             {c.recommendation}
           </div>
           {c.pages.map((p, pi) => (
             <div key={pi} style={{ padding: "12px 20px", borderTop: "1px solid #f3f3f3", background: pi === 0 ? "#F0FAF0" : "transparent" }}>
               <div style={{ fontSize: 14, fontWeight: pi === 0 ? 700 : 400, color: pi === 0 ? "#27AE60" : "#555", wordBreak: "break-all", marginBottom: 4 }}>
-                {pi === 0 && "👑 "}{(() => { try { return new URL(p.url).pathname; } catch { return p.url; } })()}
+                {pi === 0 && "👑 "}{getPathname(p.url)}
               </div>
               <div style={{ fontSize: 13, color: "#999", display: "flex", gap: 16, flexWrap: "wrap" }}>
                 <span>Clicks: <span style={{ color: "#555", fontWeight: 600 }}>{p.clicks}</span></span>
@@ -283,6 +416,7 @@ function ConflictCard({ conflict: c }) {
                 <span>Pos: <span style={{ color: "#555", fontWeight: 600 }}>{p.position.toFixed(1)}</span></span>
                 <span style={{ fontSize: 12, color: "#bbb" }}>{p.section}</span>
               </div>
+              <ActionBadge action={p.action} />
             </div>
           ))}
         </div>
@@ -291,34 +425,55 @@ function ConflictCard({ conflict: c }) {
   );
 }
 
+// ─── MAIN APP ───
+
 export default function CanniScope() {
   const [conflicts, setConflicts] = useState(null);
   const [reportText, setReportText] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [error, setError] = useState(null);
+  const [cleanMsg, setCleanMsg] = useState(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const processFiles = (files) => {
-    setError(null); setLoading(true); setCopied(false);
+    setError(null); setCleanMsg(null); setLoading(true); setCopied(false);
     const csvFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith(".csv"));
     if (csvFiles.length === 0) { setError("No CSV files found."); setLoading(false); return; }
+
     let pagesData = null;
     let done = 0;
+
     csvFiles.forEach(file => {
       Papa.parse(file, {
         header: true, skipEmptyLines: true,
         complete: (res) => {
-          if (file.name.toLowerCase().includes("page") || (res.data[0] && res.data[0]["Top pages"])) pagesData = res.data;
+          const name = file.name.toLowerCase();
+          if (name.includes("page") || (res.data[0] && res.data[0]["Top pages"])) {
+            pagesData = res.data;
+          }
           done++;
           if (done === csvFiles.length) {
-            if (!pagesData) { setError("Couldn't find Pages.csv. Upload files from your GSC export."); setLoading(false); return; }
+            if (!pagesData) {
+              setError("Couldn't find Pages.csv. Upload files from your GSC export.");
+              setLoading(false);
+              return;
+            }
             const results = analyzePages(pagesData);
-            if (results.length === 0) { setError("No cannibalization found — your pages look clean!"); setLoading(false); return; }
-            setConflicts(results); setReportText(generateReportText(results)); setLoading(false);
+            if (results.length === 0) {
+              setCleanMsg("No duplicate URL targets found — your site structure looks clean.");
+              setLoading(false);
+              return;
+            }
+            setConflicts(results);
+            setReportText(generateReportText(results));
+            setLoading(false);
           }
         },
-        error: () => { done++; if (done === csvFiles.length) { setError("Failed to parse."); setLoading(false); } },
+        error: () => {
+          done++;
+          if (done === csvFiles.length) { setError("Failed to parse CSV."); setLoading(false); }
+        },
       });
     });
   };
@@ -327,34 +482,48 @@ export default function CanniScope() {
   const onFileSelect = (e) => processFiles(e.target.files);
   const downloadReport = () => {
     const blob = new Blob([reportText], { type: "text/plain;charset=utf-8" });
-    const url = URL.createObjectURL(blob); const a = document.createElement("a");
-    a.href = url; a.download = "canniscope-report.txt"; a.click(); URL.revokeObjectURL(url);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "canniscope-report.txt"; a.click();
+    URL.revokeObjectURL(url);
   };
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); };
 
+  // ── UPLOAD SCREEN ──
   if (!conflicts) {
     return (
       <div style={s.page}>
         <div style={{ ...s.container, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
           <div style={{ textAlign: "center", maxWidth: 540, width: "100%" }}>
             <div style={s.logo}>CanniScope</div>
-            <h1 style={s.h1}>Find pages fighting<br/>each other on Google</h1>
-            <p style={s.subtitle}>Upload your Search Console CSV export. See which pages cannibalize each other.</p>
-            <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop} onClick={() => document.getElementById("csv-input").click()} style={s.dropzone(dragOver)}>
+            <h1 style={s.h1}>Find duplicate URL<br/>targets on your site</h1>
+            <p style={s.subtitle}>Upload Pages.csv from your GSC export.<br/>See which URLs target the same service + geo.</p>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+              onDragLeave={() => setDragOver(false)}
+              onDrop={onDrop}
+              onClick={() => document.getElementById("csv-input").click()}
+              style={s.dropzone(dragOver)}
+            >
               <div style={{ fontSize: 48, marginBottom: 16 }}>⚔️</div>
-              <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>{loading ? "Analyzing..." : "Select CSV files"}</div>
-              <div style={{ fontSize: 13, color: "#999" }}>Upload all files from your GSC export</div>
-              <input id="csv-input" type="file" multiple onChange={onFileSelect} style={{ display: "none" }} />
+              <div style={{ fontSize: 17, fontWeight: 700, color: "#1a1a1a", marginBottom: 4 }}>
+                {loading ? "Analyzing..." : "Select CSV files"}
+              </div>
+              <div style={{ fontSize: 13, color: "#999" }}>Upload Pages.csv from your GSC export</div>
+              <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
-            <button onClick={() => document.getElementById("folder-input").click()} style={s.folderBtn}>📂 Or select the entire export folder</button>
+            <button onClick={() => document.getElementById("folder-input").click()} style={s.folderBtn}>
+              📂 Or select the entire export folder
+            </button>
             <input id="folder-input" type="file" webkitdirectory="" directory="" onChange={onFileSelect} style={{ display: "none" }} />
             {error && <div style={s.error}>{error}</div>}
+            {cleanMsg && <div style={s.clean}>{cleanMsg}</div>}
             <div style={s.howTo}>
-              <div style={{ fontWeight: 700, color: "#555", marginBottom: 6, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>How to get the files</div>
+              <div style={{ fontWeight: 700, color: "#555", marginBottom: 6, fontSize: 13, textTransform: "uppercase", letterSpacing: 1 }}>How to get the file</div>
               1. Google Search Console → Performance<br/>
-              2. Set date range (3–6 months works best)<br/>
+              2. Set date range (3–6 months recommended)<br/>
               3. Click Export → Download CSV<br/>
-              4. Unzip → upload the folder or pick files above
+              4. Unzip → upload Pages.csv or the whole folder
             </div>
           </div>
         </div>
@@ -362,6 +531,7 @@ export default function CanniScope() {
     );
   }
 
+  // ── RESULTS SCREEN ──
   const high = conflicts.filter(c => c.risk === "HIGH").length;
   const medium = conflicts.filter(c => c.risk === "MEDIUM").length;
   const low = conflicts.filter(c => c.risk === "LOW").length;
@@ -373,14 +543,16 @@ export default function CanniScope() {
         <div style={{ marginBottom: 28 }}>
           <div style={s.logo}>CanniScope</div>
           <h2 style={{ ...s.h1, fontSize: 28, margin: "8px 0 0" }}>
-            {high > 0 ? `${high} high-risk conflicts found` : "Analysis Complete"}
+            {high > 0 ? `${high} high-risk duplicate clusters found` : "Analysis Complete"}
           </h2>
-          <p style={{ fontSize: 14, color: "#999", margin: "4px 0 0" }}>{conflicts.length} groups · {totalURLs} URLs involved</p>
+          <p style={{ fontSize: 14, color: "#999", margin: "4px 0 0" }}>
+            {conflicts.length} clusters · {totalURLs} URLs with duplicate targets
+          </p>
         </div>
 
         <div style={s.statRow}>
           {[
-            { label: "Groups", val: conflicts.length, color: "#1a1a1a" },
+            { label: "Clusters", val: conflicts.length, color: "#1a1a1a" },
             { label: "URLs", val: totalURLs, color: "#1a1a1a" },
             { label: "High", val: high, color: "#E03E2D" },
             { label: "Medium", val: medium, color: "#E67E22" },
@@ -395,7 +567,7 @@ export default function CanniScope() {
         <div style={s.actionRow}>
           <button onClick={downloadReport} style={s.primaryBtn}>📥 Download Report</button>
           <button onClick={copyReport} style={s.secBtn}>{copied ? "✓ Copied!" : "📋 Copy"}</button>
-          <button onClick={() => { setConflicts(null); setReportText(""); setError(null); }} style={s.secBtn}>↻ New</button>
+          <button onClick={reset} style={s.secBtn}>↻ New</button>
         </div>
 
         {high > 0 && (
@@ -417,7 +589,9 @@ export default function CanniScope() {
           </div>
         )}
 
-        <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: "#ccc", letterSpacing: 1.5, textTransform: "uppercase" }}>CanniScope</div>
+        <div style={{ textAlign: "center", padding: "32px 0 16px", fontSize: 12, color: "#ccc", letterSpacing: 1.5, textTransform: "uppercase" }}>
+          CanniScope · Duplicate URL Target Detector
+        </div>
       </div>
     </div>
   );
