@@ -310,7 +310,15 @@ function computeSeverity(sorted, sections) {
   else if (score >= 25) risk = "MEDIUM";
   else risk = "LOW";
 
-  return { risk, score, reasons };
+  // Confidence: how sure are we this is real cannibalization vs architecture
+  let confidence;
+  const withClicks2 = sorted.filter(p => p.clicks > 0).length;
+  if (withClicks2 >= 2 && sections.length >= 2) confidence = "HIGH";
+  else if (withClicks2 >= 2 || (sections.length >= 2 && totalImpr >= 500)) confidence = "HIGH";
+  else if (sections.length >= 2 || totalImpr >= 200) confidence = "MEDIUM";
+  else confidence = "LOW";
+
+  return { risk, score, reasons, confidence };
 }
 
 // ─── ANALYSIS ───
@@ -360,12 +368,30 @@ function analyzePages(pagesData) {
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      const { risk, score, reasons } = computeSeverity(sorted, sections);
+      const { risk, score, reasons, confidence } = computeSeverity(sorted, sections);
+
+      // ── INTENTIONAL ARCHITECTURE DETECTION ──
+      // ROOT + SERVICE-AREA/LOCATIONS for a geo page is often intentional multi-location SEO.
+      // ROOT = broad commercial page, SERVICE-AREA/LOCATIONS = geo landing.
+      const isLikelyArchitecture =
+        geo !== "generic" &&
+        sections.length >= 2 &&
+        sections.includes("ROOT") &&
+        (sections.includes("SERVICE-AREA") || sections.includes("LOCATIONS")) &&
+        // If winner is ROOT and the other is in a geo section, this is typical architecture
+        (getSection(winner.url) === "ROOT" || sections.some(s => s === "SERVICE-AREA" || s === "LOCATIONS"));
 
       const winnerPath = getPathname(winner.url);
 
       let recommendation;
-      if (sections.length >= 2) {
+      if (isLikelyArchitecture) {
+        recommendation =
+          `Likely intentional multi-location architecture. ` +
+          `${winnerPath} (ROOT) and geo landing pages in ${sections.filter(s => s !== "ROOT").join(" + ")} ` +
+          `may serve different purposes. Review manually before redirecting — ` +
+          `if both pages have unique content and serve different user intents, this is fine.`;
+        reasons.push("⚠ Possibly intentional architecture (ROOT + geo section)");
+      } else if (sections.length >= 2) {
         recommendation =
           `${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ` +
           `Winner by GSC data: ${winnerPath}. Consolidate — redirect ` +
@@ -379,6 +405,9 @@ function analyzePages(pagesData) {
 
       const pageActions = sorted.map((p, i) => {
         if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
+        if (isLikelyArchitecture && p.section !== winner.section) {
+          return { ...p, action: "Review — may be intentional geo architecture" };
+        }
         if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
           return { ...p, action: "301 redirect to winner" };
         }
@@ -393,6 +422,7 @@ function analyzePages(pagesData) {
       return {
         label, service, geo, pages: pageActions, pageCount: sorted.length,
         totalClicks, totalImpressions, sections, winner, risk, score, reasons, recommendation,
+        confidence, isLikelyArchitecture,
         isTechnical: false,
       };
     })
@@ -444,7 +474,7 @@ function generateReportText(conflicts) {
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
       r += `#${idx + 1}: ${c.label}\n`;
-      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score}\n\n`;
+      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · Confidence: ${c.confidence || "—"}\n\n`;
       r += `Why flagged:\n`;
       c.reasons.forEach(reason => { r += `  • ${reason}\n`; });
       r += `\n${c.recommendation}\n\n`;
@@ -468,13 +498,13 @@ function generateReportText(conflicts) {
 // ─── CSV EXPORT ───
 
 function generateCSV(conflicts) {
-  const rows = [["Cluster","Type","Risk","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
+  const rows = [["Cluster","Type","Risk","Confidence","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
   conflicts.forEach(c => {
     const whyFlagged = c.reasons.join("; ");
-    const type = c.isTechnical ? "Technical" : "SEO";
+    const type = c.isTechnical ? "Technical" : c.isLikelyArchitecture ? "Architecture" : "SEO";
     c.pages.forEach(p => {
       rows.push([
-        c.label, type, c.risk, c.score, c.service, c.geo || "generic",
+        c.label, type, c.risk, c.confidence || "—", c.score, c.service, c.geo || "generic",
         c.sections.join(" + "), p.url, p.clicks, p.impressions,
         p.ctr + "%", p.position.toFixed(1), p.section, p.action, whyFlagged,
       ]);
@@ -537,6 +567,8 @@ function ActionBadge({ action }) {
     bg = "#FFF3E0"; color = "#E65100";
   } else if (action.startsWith("Technical")) {
     bg = "#E3F2FD"; color = "#1565C0";
+  } else if (action.startsWith("Review")) {
+    bg = "#F3E5F5"; color = "#7B1FA2";
   } else {
     bg = "#FFF8E1"; color = "#F57F17";
   }
@@ -562,17 +594,21 @@ function ConflictCard({ conflict: c }) {
   const [open, setOpen] = useState(false);
   const rc = c.isTechnical ? "#1565C0" : c.risk === "HIGH" ? "#E03E2D" : c.risk === "MEDIUM" ? "#E67E22" : "#27AE60";
   const badge = c.isTechnical ? "TECH" : c.risk;
+  const confColor = c.confidence === "HIGH" ? "#E03E2D" : c.confidence === "MEDIUM" ? "#E67E22" : "#999";
 
   return (
     <div style={s.card(open, rc)}>
       <div onClick={() => setOpen(!open)} style={{ padding: "16px 20px", cursor: "pointer", display: "flex", alignItems: "center", gap: 14 }}>
         <span style={{ padding: "3px 10px", borderRadius: 20, background: rc + "14", color: rc, fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{badge}</span>
         <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 2 }}>{c.label}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: "#1a1a1a", marginBottom: 2 }}>
+            {c.isLikelyArchitecture && "🏗 "}{c.label}
+          </div>
           <div style={{ fontSize: 13, color: "#999" }}>
             {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impr
           </div>
         </div>
+        {c.confidence && <span style={{ fontSize: 10, fontWeight: 700, color: confColor, letterSpacing: 0.5, flexShrink: 0 }}>{c.confidence}</span>}
         <span style={{ color: "#bbb", fontSize: 12, fontWeight: 600, marginRight: 4 }}>{c.score}</span>
         <span style={{ color: "#ccc", fontSize: 14, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>▸</span>
       </div>
