@@ -1,78 +1,61 @@
 import { useState } from "react";
 import Papa from "papaparse";
 
-const SERVICES = [
-  "appliance-repair",
-  "refrigerator-repair",
-  "fridge-repair",
-  "washer-repair",
-  "dryer-repair",
-  "dishwasher-repair",
-  "cooktop-repair",
-  "oven-repair",
-  "icemaker-repair",
-  "ice-maker-repair",
-  "freezer-repair",
-  "microwave-repair",
-  "sub-zero-repair",
-  "sub-zero-refrigerator-repair",
-  "lg-appliance-repair",
-  "samsung-appliance-repair",
-  "whirlpool-appliance-repair",
-  "ge-appliance-repair",
+const SERVICE_ALIASES = [
+  ["sub-zero-refrigerator-repair", "sub-zero-repair"],
+  ["sub-zero-repair", "sub-zero-repair"],
+  ["ge-appliance-repair", "ge-appliance-repair"],
+  ["lg-appliance-repair", "lg-appliance-repair"],
+  ["samsung-appliance-repair", "samsung-appliance-repair"],
+  ["whirlpool-appliance-repair", "whirlpool-appliance-repair"],
+  ["refrigerator-repair", "refrigerator-repair"],
+  ["fridge-repair", "refrigerator-repair"],
+  ["washer-repair", "washer-repair"],
+  ["dryer-repair", "dryer-repair"],
+  ["dishwasher-repair", "dishwasher-repair"],
+  ["cooktop-repair", "cooktop-repair"],
+  ["oven-repair", "oven-repair"],
+  ["ice-maker-repair", "icemaker-repair"],
+  ["icemaker-repair", "icemaker-repair"],
+  ["freezer-repair", "freezer-repair"],
+  ["microwave-repair", "microwave-repair"],
+  ["appliance-repair", "appliance-repair"],
 ];
 
-const LOCATIONS = [
-  "atlanta",
-  "charlotte",
-  "jacksonville",
-  "miami",
-  "tampa",
-  "tampa-bay",
-  "philadelphia",
-  "jacksonville-beach",
-  "wesley-chapel",
-  "brandon",
-  "sarasota",
-  "roswell",
-  "alpharetta",
-  "milton",
-  "johns-creek",
-  "east-cobb",
-  "chastain-park",
-  "concord",
-  "belmont",
-  "ballantyne",
-  "huntersville",
-  "rock-hill",
-  "fort-mill",
-  "waxhaw",
-  "doral",
-  "coral-gables",
-  "delray-beach",
-  "miami-beach",
-  "boca-raton",
-  "orange-park",
-  "ponte-vedra",
-  "fernandina-beach",
+const INTENTS = [
+  ["cost", ["cost", "price", "how-much"]],
+  ["best", ["best"]],
+  ["cheap", ["cheap"]],
+  ["free", ["free"]],
+  ["near-me", ["near-me"]],
+  ["same-day", ["same-day"]],
+  ["brand", ["sub-zero", "samsung", "lg-", "whirlpool", "ge-appliance"]],
+  [
+    "symptom",
+    [
+      "not-cooling",
+      "not-heating",
+      "not-draining",
+      "wont-drain",
+      "won-t-drain",
+      "wont-light",
+      "won-t-light",
+      "not-spinning",
+      "not-making-ice",
+      "temperature-off",
+      "temperature-issues",
+      "takes-too-long",
+      "not-drying-fast",
+      "not-cleaning",
+    ],
+  ],
 ];
 
-const INTENT_PATTERNS = [
-  { intent: "cost", words: ["cost", "price", "how-much"] },
-  { intent: "best", words: ["best"] },
-  { intent: "cheap", words: ["cheap"] },
-  { intent: "free", words: ["free"] },
-  { intent: "near-me", words: ["near-me"] },
-  { intent: "same-day", words: ["same-day"] },
-  { intent: "symptom", words: ["not-cooling", "not-heating", "not-draining", "wont-drain", "wont-light", "not-spinning", "not-making-ice", "temperature-off", "temperature-issues", "takes-too-long", "not-drying-fast"] },
-  { intent: "brand", words: ["sub-zero", "samsung", "lg", "whirlpool", "ge-appliance"] },
-];
-
-function normalizeNumber(value) {
-  return Number(String(value || "0").replace(/,/g, "").replace("%", "")) || 0;
+function num(v) {
+  return Number(String(v || "0").replace(/,/g, "").replace("%", "")) || 0;
 }
 
-function getPath(url) {
+function pathFromUrl(url) {
   try {
     return new URL(url).pathname.replace(/^\/|\/$/g, "").toLowerCase();
   } catch {
@@ -80,87 +63,109 @@ function getPath(url) {
   }
 }
 
-function humanize(slug) {
-  return String(slug || "")
+function title(slug) {
+  return String(slug || "generic")
     .replace(/-/g, " ")
     .replace(/\b\w/g, (m) => m.toUpperCase());
 }
 
-function getSection(path) {
+function sectionOf(path) {
   if (path.startsWith("blog/")) return "BLOG";
-  if (path.startsWith("service-area/")) return "SERVICE AREA";
   if (path.startsWith("locations/")) return "LOCATIONS";
+  if (path.startsWith("service-area/")) return "SERVICE AREA";
   if (path.startsWith("category/")) return "CATEGORY";
-  if (path.startsWith("services/")) return "LEGACY SERVICES";
+  if (path.startsWith("services/")) return "LEGACY";
   return "ROOT";
 }
 
-function getIntent(path) {
-  for (const item of INTENT_PATTERNS) {
-    if (item.words.some((w) => path.includes(w))) return item.intent;
+function lastSlug(path) {
+  const parts = path.split("/").filter(Boolean);
+  return parts[parts.length - 1] || "";
+}
+
+function stripState(slug) {
+  return slug.replace(/-fl$/, "").replace(/-ga$/, "").replace(/-nc$/, "").replace(/-sc$/, "");
+}
+
+function detectIntent(path) {
+  for (const [intent, words] of INTENTS) {
+    if (words.some((w) => path.includes(w))) return intent;
   }
   return "service";
 }
 
-function getService(path) {
-  const normalized = path
-    .replace(/\/$/, "")
-    .replace(/-in-/g, "-")
-    .replace(/-nc/g, "")
-    .replace(/-ga/g, "")
-    .replace(/-fl/g, "");
+function detectService(path) {
+  const slug = stripState(lastSlug(path).replace(/-in-/g, "-"));
 
-  const found = SERVICES
-    .filter((service) => normalized.includes(service))
-    .sort((a, b) => b.length - a.length)[0];
+  for (const [raw, normalized] of SERVICE_ALIASES.sort((a, b) => b[0].length - a[0].length)) {
+    if (slug.includes(raw)) return normalized;
+  }
 
-  if (!found) return null;
-
-  if (found === "fridge-repair") return "refrigerator-repair";
-  if (found === "ice-maker-repair") return "icemaker-repair";
-
-  return found;
+  return null;
 }
 
-function getLocation(path) {
-  const found = LOCATIONS
-    .filter((loc) => path.includes(loc))
-    .sort((a, b) => b.length - a.length)[0];
+function detectGeo(path, service) {
+  if (!service) return "generic";
 
-  if (!found) return "generic";
+  let slug = stripState(lastSlug(path));
 
-  if (found === "tampa-bay") return "tampa";
-  return found;
+  const rawServices = SERVICE_ALIASES
+    .filter(([, normalized]) => normalized === service)
+    .map(([raw]) => raw)
+    .sort((a, b) => b.length - a.length);
+
+  for (const raw of rawServices) {
+    if (slug === raw) return "generic";
+
+    if (slug.startsWith(`${raw}-in-`)) {
+      slug = slug.replace(`${raw}-in-`, "");
+      return slug || "generic";
+    }
+
+    if (slug.startsWith(`${raw}-`)) {
+      slug = slug.replace(`${raw}-`, "");
+      return slug || "generic";
+    }
+  }
+
+  return "generic";
 }
 
-function isLikelyDuplicate(a, b) {
-  if (a.service !== b.service) return false;
-  if (a.location !== b.location) return false;
-  if (a.intent !== b.intent) return false;
-
-  const samePathWithoutPrefix =
-    a.path.replace(/^service-area\//, "").replace(/^locations\/[^/]+\//, "") ===
-    b.path.replace(/^service-area\//, "").replace(/^locations\/[^/]+\//, "");
-
-  const rootVsService =
-    (a.section === "ROOT" && b.section === "SERVICE AREA") ||
-    (a.section === "SERVICE AREA" && b.section === "ROOT");
-
-  const blogVsRoot =
-    (a.section === "BLOG" && b.section === "ROOT") ||
-    (a.section === "ROOT" && b.section === "BLOG");
-
-  const similarServiceCity =
-    a.service &&
-    a.location &&
-    a.location !== "generic" &&
-    a.intent === "service" &&
-    b.intent === "service";
-
-  return samePathWithoutPrefix || rootVsService || blogVsRoot || similarServiceCity;
+function contentKey(path) {
+  return path
+    .replace(/^blog\//, "")
+    .replace(/^category\//, "category-")
+    .replace(/^services\//, "services-");
 }
 
-function pickWinner(pages) {
+function rowToPage(row) {
+  const url = row["Top pages"] || row.Page || row.Pages || "";
+  const path = pathFromUrl(url);
+  const section = sectionOf(path);
+  const service = detectService(path);
+  const geo = detectGeo(path, service);
+  const intent = detectIntent(path);
+
+  const key = service
+    ? `service|${service}|${geo}|${intent}`
+    : `content|${contentKey(path)}`;
+
+  return {
+    url,
+    path,
+    section,
+    service,
+    geo,
+    intent,
+    key,
+    clicks: num(row.Clicks),
+    impressions: num(row.Impressions),
+    ctr: num(row.CTR),
+    position: num(row.Position),
+  };
+}
+
+function winnerOf(pages) {
   return [...pages].sort((a, b) => {
     if (b.clicks !== a.clicks) return b.clicks - a.clicks;
     if (b.impressions !== a.impressions) return b.impressions - a.impressions;
@@ -168,126 +173,110 @@ function pickWinner(pages) {
   })[0];
 }
 
-function makeRecommendation(group, pages) {
-  const winner = pickWinner(pages);
-  const losers = pages.filter((p) => p.url !== winner.url);
+function isUsefulConflict(group) {
+  if (group.length < 2) return false;
 
-  if (group.intent !== "service") {
-    return `Different intent detected: ${group.intent}. Do NOT redirect blindly. Check content overlap first. Main candidate: ${winner.url}`;
-  }
+  const sections = new Set(group.map((p) => p.section));
+  const paths = new Set(group.map((p) => p.path));
 
-  if (group.location === "generic") {
-    return `Generic duplicate cluster. Pick the strongest page as canonical/main. Main candidate: ${winner.url}. Redirect or canonical weaker duplicates if they are same intent.`;
-  }
+  if (paths.size < 2) return false;
 
-  return `Same service + same location + same intent. Main candidate: ${winner.url}. Check if weaker URLs already 301. If not, redirect them to the main candidate.`;
+  if (sections.has("CATEGORY") || sections.has("LEGACY")) return true;
+
+  if (sections.size >= 2) return true;
+
+  const hasServiceAreaDuplicate = group.some((p) => p.path.includes("service-area/"));
+  const hasRootDuplicate = group.some((p) => p.section === "ROOT");
+
+  if (hasServiceAreaDuplicate && hasRootDuplicate) return true;
+
+  const locationDuplicates = group.filter((p) => p.section === "LOCATIONS");
+  if (locationDuplicates.length >= 2) return true;
+
+  return false;
 }
 
-function analyzePages(pagesData) {
-  const pages = pagesData
-    .map((row) => {
-      const url = row["Top pages"] || row["Page"] || row["Pages"] || "";
-      const path = getPath(url);
-      const service = getService(path);
-      const location = getLocation(path);
-      const intent = getIntent(path);
-      const section = getSection(path);
+function actionText(c) {
+  const w = c.winner;
 
-      return {
-        url,
-        path,
-        service,
-        location,
-        intent,
-        section,
-        clicks: normalizeNumber(row["Clicks"]),
-        impressions: normalizeNumber(row["Impressions"]),
-        ctr: normalizeNumber(row["CTR"]),
-        position: normalizeNumber(row["Position"]),
-      };
-    })
+  if (c.intent !== "service") {
+    return `Different intent: ${c.intent}. Do not redirect blindly. Check overlap. Winner by GSC data: ${w.url}`;
+  }
+
+  if (c.geo === "generic") {
+    return `Generic page duplicate. Winner by GSC data: ${w.url}. If weaker URLs are not already 301/canonical, consolidate.`;
+  }
+
+  return `Same service + same geo + same intent. Winner by GSC data: ${w.url}. If weaker URLs are not already 301, redirect them. If 301 already exists, wait for Google.`;
+}
+
+function analyzePages(rows) {
+  const pages = rows
+    .map(rowToPage)
     .filter((p) => {
       if (!p.url || !p.path || p.url.includes("#")) return false;
       if (p.url === "https://bozmanfix.com/") return false;
-      if (!p.service && p.section !== "BLOG" && p.section !== "CATEGORY" && p.section !== "LEGACY SERVICES") return false;
+      if (!p.service && !["BLOG", "CATEGORY", "LEGACY"].includes(p.section)) return false;
       return true;
     });
 
-  const groups = {};
-
-  pages.forEach((page) => {
-    const key = `${page.section}|${page.location}|${page.service || page.path.split("/").pop()}|${page.intent}`;
-
-    if (!groups[key]) {
-      groups[key] = {
-        section: page.section,
-        location: page.location,
-        service: page.service || page.path.split("/").pop(),
-        intent: page.intent,
-        pages: [],
-      };
-    }
-
-    groups[key].pages.push(page);
+  const map = {};
+  pages.forEach((p) => {
+    if (!map[p.key]) map[p.key] = [];
+    map[p.key].push(p);
   });
 
-  const conflicts = Object.values(groups)
-    .filter((group) => group.pages.length >= 2)
+  return Object.values(map)
+    .filter(isUsefulConflict)
     .map((group) => {
-      const pagesInGroup = group.pages.filter((a, idx, arr) =>
-        arr.some((b, bidx) => idx !== bidx && isLikelyDuplicate(a, b))
-      );
-
-      if (pagesInGroup.length < 2) return null;
-
-      const sorted = [...pagesInGroup].sort((a, b) => {
+      const sorted = [...group].sort((a, b) => {
         if (b.clicks !== a.clicks) return b.clicks - a.clicks;
         if (b.impressions !== a.impressions) return b.impressions - a.impressions;
         return a.position - b.position;
       });
 
-      const totalClicks = sorted.reduce((sum, p) => sum + p.clicks, 0);
-      const totalImpressions = sorted.reduce((sum, p) => sum + p.impressions, 0);
-      const winner = pickWinner(sorted);
-      const bestPosition = Math.min(...sorted.map((p) => p.position || 999));
-      const worstPosition = Math.max(...sorted.map((p) => p.position || 0));
+      const winner = winnerOf(sorted);
+      const totalClicks = sorted.reduce((s, p) => s + p.clicks, 0);
+      const totalImpressions = sorted.reduce((s, p) => s + p.impressions, 0);
+      const service = sorted[0].service || contentKey(sorted[0].path);
+      const geo = sorted[0].geo || "generic";
+      const intent = sorted[0].intent || "content";
 
       let risk = "LOW";
-      if (totalImpressions >= 1000 && sorted.length >= 2 && group.intent === "service") risk = "HIGH";
-      else if (totalImpressions >= 300 && sorted.length >= 2) risk = "MEDIUM";
+      if (totalImpressions >= 1000 && intent === "service") risk = "HIGH";
+      else if (totalImpressions >= 300) risk = "MEDIUM";
       else if (sorted.length >= 3) risk = "MEDIUM";
 
-      if (group.section === "CATEGORY" || group.section === "LEGACY SERVICES") risk = "MEDIUM";
-      if (group.intent !== "service") risk = risk === "HIGH" ? "MEDIUM" : risk;
+      if (intent !== "service" && risk === "HIGH") risk = "MEDIUM";
 
-      return {
-        keyword: `${humanize(group.service)} — ${humanize(group.location)}${group.intent !== "service" ? ` — ${humanize(group.intent)}` : ""}`,
-        section: group.section,
-        location: group.location,
-        service: group.service,
-        intent: group.intent,
+      const sections = [...new Set(sorted.map((p) => p.section))].join(" + ");
+
+      const conflict = {
+        label: `${title(service)} — ${title(geo)}${intent !== "service" ? ` — ${title(intent)}` : ""}`,
+        service,
+        geo,
+        intent,
+        sections,
         pages: sorted,
         pageCount: sorted.length,
         totalClicks,
         totalImpressions,
-        bestPosition,
-        worstPosition,
         winner,
         risk,
-        recommendation: makeRecommendation(group, sorted),
       };
+
+      conflict.action = actionText(conflict);
+
+      return conflict;
     })
-    .filter(Boolean)
     .sort((a, b) => {
-      const riskOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
-      if (riskOrder[a.risk] !== riskOrder[b.risk]) return riskOrder[a.risk] - riskOrder[b.risk];
+      const order = { HIGH: 0, MEDIUM: 1, LOW: 2 };
+      if (order[a.risk] !== order[b.risk]) return order[a.risk] - order[b.risk];
       return b.totalImpressions - a.totalImpressions;
     });
-
-  return conflicts;
 }
 
-function generateReport(conflicts) {
+function reportText(conflicts) {
   let r = "";
   r += "=================================================\n";
   r += "  CANNISCOPE — SEO X-RAY REPORT\n";
@@ -297,72 +286,62 @@ function generateReport(conflicts) {
   const medium = conflicts.filter((c) => c.risk === "MEDIUM").length;
   const low = conflicts.filter((c) => c.risk === "LOW").length;
 
-  r += `Summary:\n`;
-  r += `  Groups found: ${conflicts.length}\n`;
-  r += `  HIGH risk: ${high}\n`;
-  r += `  MEDIUM risk: ${medium}\n`;
-  r += `  LOW risk: ${low}\n\n`;
+  r += `Groups found: ${conflicts.length}\n`;
+  r += `HIGH: ${high}\n`;
+  r += `MEDIUM: ${medium}\n`;
+  r += `LOW: ${low}\n\n`;
 
-  const sections = ["SERVICE AREA", "ROOT", "LOCATIONS", "BLOG", "LEGACY SERVICES", "CATEGORY"];
-
-  sections.forEach((section) => {
-    const items = conflicts.filter((c) => c.section === section);
+  ["HIGH", "MEDIUM", "LOW"].forEach((risk) => {
+    const items = conflicts.filter((c) => c.risk === risk);
     if (!items.length) return;
 
     r += "=================================================\n";
-    r += `  ${section}\n`;
+    r += `  ${risk}\n`;
     r += "=================================================\n\n";
 
-    items.forEach((c, idx) => {
-      r += `#${idx + 1}: ${c.keyword}\n`;
-      r += `Risk: ${c.risk}\n`;
+    items.forEach((c, i) => {
+      r += `#${i + 1}: ${c.label}\n`;
+      r += `Sections: ${c.sections}\n`;
       r += `Combined: ${c.totalClicks} clicks, ${c.totalImpressions.toLocaleString()} impressions\n`;
-      r += `Main candidate: ${c.winner.url}\n\n`;
-      r += `Pages:\n`;
+      r += `Winner: ${c.winner.url}\n`;
+      r += `Action: ${c.action}\n\n`;
 
-      c.pages.forEach((p, pi) => {
-        const label = p.url === c.winner.url ? " << MAIN CANDIDATE" : "";
-        r += `  ${pi + 1}. ${p.url}${label}\n`;
-        r += `     ${p.clicks} clicks | ${p.impressions.toLocaleString()} impressions | CTR ${p.ctr}% | pos ${p.position.toFixed(1)} | ${p.section}\n`;
+      c.pages.forEach((p, idx) => {
+        const mark = p.url === c.winner.url ? " << WINNER" : "";
+        r += `  ${idx + 1}. ${p.url}${mark}\n`;
+        r += `     ${p.clicks} clicks | ${p.impressions.toLocaleString()} impressions | CTR ${p.ctr}% | Pos ${p.position.toFixed(1)} | ${p.section}\n`;
       });
 
-      r += `\nAction:\n  ${c.recommendation}\n\n`;
+      r += "\n";
     });
   });
 
-  r += "=================================================\n";
-  r += "  IMPORTANT NOTE\n";
-  r += "=================================================\n";
-  r += "GSC may keep old URLs visible after 301 redirects. If a redirect already exists, do not panic — wait for Google to process it. If no redirect exists, fix it.\n\n";
-
-  r += "Generated by CanniScope\n";
-
+  r += "NOTE: GSC may show old URLs after 301 redirects. If redirect already exists, wait. If not, fix it.\n";
   return r;
 }
 
 export default function CanniScope() {
   const [conflicts, setConflicts] = useState(null);
-  const [reportText, setReportText] = useState("");
+  const [report, setReport] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const processFiles = (files) => {
-    setError(null);
+  function processFiles(files) {
+    setError("");
     setLoading(true);
     setCopied(false);
 
-    const fileArray = Array.from(files);
-    const csvFiles = fileArray.filter((f) => f.name.toLowerCase().endsWith(".csv"));
+    const csvFiles = Array.from(files).filter((f) => f.name.toLowerCase().endsWith(".csv"));
 
-    if (csvFiles.length === 0) {
+    if (!csvFiles.length) {
       setError("No CSV files found.");
       setLoading(false);
       return;
     }
 
-    let pagesData = null;
+    let pagesRows = null;
     let done = 0;
 
     csvFiles.forEach((file) => {
@@ -370,125 +349,122 @@ export default function CanniScope() {
         header: true,
         skipEmptyLines: true,
         complete: (res) => {
-          if (file.name.toLowerCase().includes("page")) pagesData = res.data;
-          if (!pagesData && res.data[0] && res.data[0]["Top pages"]) pagesData = res.data;
+          const first = res.data?.[0] || {};
+          const name = file.name.toLowerCase();
 
-          done++;
+          if (name.includes("page") || first["Top pages"]) {
+            pagesRows = res.data;
+          }
+
+          done += 1;
 
           if (done === csvFiles.length) {
-            if (!pagesData) {
-              setError("Couldn't find Pages.csv. Upload the full unzipped GSC CSV export.");
+            if (!pagesRows) {
+              setError("Pages.csv not found. Upload full unzipped GSC CSV export.");
               setLoading(false);
               return;
             }
 
-            const results = analyzePages(pagesData);
+            const result = analyzePages(pagesRows);
 
-            if (results.length === 0) {
-              setError("No strong duplicate clusters found. Your Pages.csv looks mostly clean.");
+            if (!result.length) {
+              setError("No strong duplicate clusters found.");
               setLoading(false);
               return;
             }
 
-            setConflicts(results);
-            setReportText(generateReport(results));
+            setConflicts(result);
+            setReport(reportText(result));
             setLoading(false);
           }
         },
         error: () => {
-          done++;
-          if (done === csvFiles.length && !pagesData) {
-            setError("Failed to parse CSV.");
+          done += 1;
+          if (done === csvFiles.length && !pagesRows) {
+            setError("CSV parse error.");
             setLoading(false);
           }
         },
       });
     });
-  };
+  }
 
-  const onDrop = (e) => {
-    e.preventDefault();
-    setDragOver(false);
-    processFiles(e.dataTransfer.files);
-  };
-
-  const onFileSelect = (e) => processFiles(e.target.files);
-
-  const downloadReport = () => {
-    const blob = new Blob([reportText], { type: "text/plain;charset=utf-8" });
+  function downloadReport() {
+    const blob = new Blob([report], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "canniscope-xray-report.txt";
+    a.download = "canniscope-report.txt";
     a.click();
     URL.revokeObjectURL(url);
-  };
+  }
 
-  const copyReport = () => {
-    navigator.clipboard.writeText(reportText);
+  function copyReport() {
+    navigator.clipboard.writeText(report);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
+    setTimeout(() => setCopied(false), 1200);
+  }
 
   if (!conflicts) {
     return (
-      <div style={styles.pageCenter}>
-        <div style={styles.container}>
-          <div style={styles.logo}>CanniScope</div>
-          <h1 style={styles.h1}>SEO X-Ray for<br />GSC Page Exports</h1>
-          <p style={styles.sub}>
-            Upload your Google Search Console CSV export.
-            <br />
-            Find same-service, same-location URL conflicts.
+      <div style={s.centerPage}>
+        <div style={s.homeBox}>
+          <div style={s.logo}>CanniScope</div>
+          <h1 style={s.h1}>SEO X-Ray for GSC Page Exports</h1>
+          <p style={s.sub}>
+            Upload the full unzipped Google Search Console CSV export. The tool finds same-service, same-geo URL clusters.
           </p>
 
           <div
+            style={{
+              ...s.drop,
+              borderColor: dragOver ? "#ff3b30" : "#333",
+              background: dragOver ? "#ff3b300d" : "transparent",
+            }}
             onDragOver={(e) => {
               e.preventDefault();
               setDragOver(true);
             }}
             onDragLeave={() => setDragOver(false)}
-            onDrop={onDrop}
-            onClick={() => document.getElementById("csv-input").click()}
-            style={{
-              ...styles.dropzone,
-              borderColor: dragOver ? "#FF3B30" : "#333",
-              background: dragOver ? "#FF3B3008" : "transparent",
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              processFiles(e.dataTransfer.files);
             }}
+            onClick={() => document.getElementById("csv-input").click()}
           >
-            <div style={styles.icon}>🩻</div>
-            <div style={styles.dropTitle}>{loading ? "Analyzing..." : "Select CSV files"}</div>
-            <div style={styles.dropSub}>Pick all files from your GSC export</div>
-            <input id="csv-input" type="file" multiple onChange={onFileSelect} style={{ display: "none" }} />
+            <div style={s.icon}>🩻</div>
+            <div style={s.dropTitle}>{loading ? "Analyzing..." : "Select CSV files"}</div>
+            <div style={s.dropSub}>Pick all files from GSC export</div>
+            <input
+              id="csv-input"
+              type="file"
+              multiple
+              onChange={(e) => processFiles(e.target.files)}
+              style={{ display: "none" }}
+            />
           </div>
 
-          <button
-            onClick={() => document.getElementById("folder-input").click()}
-            style={styles.folderButton}
-          >
-            📂 Or select the entire export folder
+          <button style={s.folderBtn} onClick={() => document.getElementById("folder-input").click()}>
+            📂 Select export folder
           </button>
 
           <input
             id="folder-input"
             type="file"
+            multiple
             webkitdirectory=""
             directory=""
-            onChange={onFileSelect}
+            onChange={(e) => processFiles(e.target.files)}
             style={{ display: "none" }}
           />
 
-          {error && <div style={styles.error}>{error}</div>}
+          {error && <div style={s.error}>{error}</div>}
 
-          <div style={styles.howto}>
-            <div style={{ fontWeight: 700, color: "#aaa", marginBottom: 6 }}>How to get the files:</div>
-            1. Google Search Console → Performance
+          <div style={s.how}>
+            <b>Flow:</b>
             <br />
-            2. Set date range
-            <br />
-            3. Export → Download CSV
-            <br />
-            4. Unzip → upload the folder or all CSV files here
+            GSC → Performance → Export → Download CSV → Unzip → Upload folder here
           </div>
         </div>
       </div>
@@ -497,92 +473,88 @@ export default function CanniScope() {
 
   const high = conflicts.filter((c) => c.risk === "HIGH").length;
   const medium = conflicts.filter((c) => c.risk === "MEDIUM").length;
-  const totalPages = conflicts.reduce((s, c) => s + c.pageCount, 0);
+  const totalUrls = conflicts.reduce((sum, c) => sum + c.pageCount, 0);
 
   return (
-    <div style={styles.resultsPage}>
-      <div style={styles.header}>
-        <span style={styles.logo}>CanniScope</span>
-        <h2 style={styles.h2}>
-          {high > 0 ? `🔥 ${high} high-risk clusters found` : "SEO X-Ray Complete"}
-        </h2>
-        <p style={styles.summary}>
-          {conflicts.length} groups · {totalPages} URLs · {medium} medium-risk groups
+    <div style={s.results}>
+      <div style={s.top}>
+        <div style={s.logo}>CanniScope</div>
+        <h2 style={s.h2}>{high ? `🔥 ${high} high-risk clusters found` : "SEO X-Ray Complete"}</h2>
+        <p style={s.meta}>
+          {conflicts.length} groups · {totalUrls} URLs · {medium} medium-risk groups
         </p>
       </div>
 
-      <div style={styles.buttons}>
-        <button onClick={downloadReport} style={styles.primaryButton}>📥 Download Report</button>
-        <button onClick={copyReport} style={styles.secondaryButton}>{copied ? "✓ Copied" : "📋 Copy"}</button>
+      <div style={s.actions}>
+        <button style={s.primary} onClick={downloadReport}>📥 Download Report</button>
+        <button style={s.secondary} onClick={copyReport}>{copied ? "✓ Copied" : "📋 Copy"}</button>
         <button
+          style={s.secondary}
           onClick={() => {
             setConflicts(null);
-            setReportText("");
-            setError(null);
+            setReport("");
+            setError("");
           }}
-          style={styles.secondaryButton}
         >
           ↻ New
         </button>
       </div>
 
-      <RiskSection title="🔴 High Risk — Fix First" risk="HIGH" conflicts={conflicts} />
-      <RiskSection title="🟡 Medium Risk — Check" risk="MEDIUM" conflicts={conflicts} />
-      <RiskSection title="🟢 Low Risk — Monitor" risk="LOW" conflicts={conflicts} />
-
-      <div style={styles.footer}>CanniScope</div>
+      <RiskBlock title="🔴 High Risk — Fix First" risk="HIGH" conflicts={conflicts} />
+      <RiskBlock title="🟡 Medium Risk — Check" risk="MEDIUM" conflicts={conflicts} />
+      <RiskBlock title="🟢 Low Risk — Monitor" risk="LOW" conflicts={conflicts} />
     </div>
   );
 }
 
-function RiskSection({ title, risk, conflicts }) {
+function RiskBlock({ title, risk, conflicts }) {
   const items = conflicts.filter((c) => c.risk === risk);
   if (!items.length) return null;
 
-  const color = risk === "HIGH" ? "#FF3B30" : risk === "MEDIUM" ? "#FF9900" : "#34C759";
+  const color = risk === "HIGH" ? "#ff3b30" : risk === "MEDIUM" ? "#ff9900" : "#34c759";
 
   return (
-    <div style={{ marginBottom: 26 }}>
-      <div style={{ ...styles.sectionTitle, color }}>{title}</div>
+    <div style={s.block}>
+      <div style={{ ...s.blockTitle, color }}>{title}</div>
       {items.map((c, i) => (
-        <ConflictCard key={`${risk}-${i}`} conflict={c} />
+        <Card key={`${risk}-${i}`} c={c} />
       ))}
     </div>
   );
 }
 
-function ConflictCard({ conflict: c }) {
+function Card({ c }) {
   const [open, setOpen] = useState(false);
-  const riskColor = c.risk === "HIGH" ? "#FF3B30" : c.risk === "MEDIUM" ? "#FF9900" : "#34C759";
+  const color = c.risk === "HIGH" ? "#ff3b30" : c.risk === "MEDIUM" ? "#ff9900" : "#34c759";
 
   return (
-    <div style={{ ...styles.card, borderColor: open ? `${riskColor}66` : "#1a1a1a" }}>
-      <div onClick={() => setOpen(!open)} style={styles.cardTop}>
+    <div style={{ ...s.card, borderColor: open ? `${color}88` : "#1e1e1e" }}>
+      <div style={s.cardHead} onClick={() => setOpen(!open)}>
         <div style={{ flex: 1 }}>
-          <div style={styles.cardTitle}>{c.keyword}</div>
-          <div style={styles.cardMeta}>
-            {c.section} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impressions
+          <div style={s.cardTitle}>{c.label}</div>
+          <div style={s.cardMeta}>
+            {c.sections} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impressions
           </div>
         </div>
-        <span style={{ ...styles.arrow, transform: open ? "rotate(90deg)" : "none" }}>▸</span>
+        <div style={{ ...s.chev, transform: open ? "rotate(90deg)" : "none" }}>▸</div>
       </div>
 
       {open && (
-        <div style={styles.cardBody}>
-          <div style={{ ...styles.reco, borderLeftColor: riskColor }}>
-            <strong>Main candidate:</strong> {c.winner.url}
+        <div style={s.body}>
+          <div style={{ ...s.reco, borderLeftColor: color }}>
+            <b>Winner:</b> {c.winner.url}
             <br />
             <br />
-            {c.recommendation}
+            {c.action}
           </div>
 
-          {c.pages.map((p, pi) => (
-            <div key={pi} style={styles.urlRow}>
-              <div style={{ ...styles.url, color: p.url === c.winner.url ? "#34C759" : "#999" }}>
-                {p.url === c.winner.url && "👑 "}
+          {c.pages.map((p, i) => (
+            <div key={i} style={s.row}>
+              <div style={{ ...s.url, color: p.url === c.winner.url ? "#34c759" : "#aaa" }}>
+                {p.url === c.winner.url ? "👑 " : ""}
                 /{p.path}
               </div>
-              <div style={styles.metrics}>
+              <div style={s.metrics}>
                 <span>Clicks: <b>{p.clicks}</b></span>
                 <span>Impr: <b>{p.impressions.toLocaleString()}</b></span>
                 <span>CTR: <b>{p.ctr}%</b></span>
@@ -599,224 +571,208 @@ function ConflictCard({ conflict: c }) {
 
 const font = "'JetBrains Mono','SF Mono','Fira Code',monospace";
 
-const styles = {
-  pageCenter: {
+const s = {
+  centerPage: {
     minHeight: "100vh",
+    background: "#0a0a0a",
+    color: "#e5e5e5",
+    fontFamily: font,
     display: "flex",
-    flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
     padding: 24,
-    fontFamily: font,
-    background: "#0A0A0A",
-    color: "#E5E5E5",
   },
-  container: {
-    textAlign: "center",
-    maxWidth: 560,
+  homeBox: {
     width: "100%",
+    maxWidth: 580,
+    textAlign: "center",
   },
   logo: {
-    fontSize: 12,
-    letterSpacing: 6,
+    color: "#ff3b30",
     textTransform: "uppercase",
-    color: "#FF3B30",
-    marginBottom: 12,
-    fontWeight: 700,
+    letterSpacing: 6,
+    fontSize: 12,
+    fontWeight: 800,
+    marginBottom: 14,
   },
   h1: {
-    fontSize: 30,
-    fontWeight: 800,
-    margin: "0 0 10px",
-    lineHeight: 1.15,
     color: "#fff",
+    fontSize: 30,
+    lineHeight: 1.15,
+    margin: "0 0 12px",
   },
   h2: {
-    margin: "6px 0 0",
-    fontSize: 24,
-    fontWeight: 800,
     color: "#fff",
+    fontSize: 25,
+    margin: "0 0 6px",
   },
   sub: {
-    fontSize: 13,
     color: "#888",
-    margin: "0 0 36px",
+    fontSize: 13,
     lineHeight: 1.6,
+    marginBottom: 34,
   },
-  dropzone: {
+  drop: {
     border: "2px dashed #333",
     borderRadius: 16,
-    padding: "52px 24px",
+    padding: "50px 22px",
     cursor: "pointer",
-    transition: "all 0.2s",
   },
   icon: {
-    fontSize: 44,
-    marginBottom: 16,
+    fontSize: 42,
+    marginBottom: 14,
   },
   dropTitle: {
-    fontSize: 16,
-    fontWeight: 700,
-    marginBottom: 8,
     color: "#fff",
+    fontSize: 16,
+    fontWeight: 800,
+    marginBottom: 8,
   },
   dropSub: {
-    fontSize: 12,
     color: "#666",
+    fontSize: 12,
   },
-  folderButton: {
-    marginTop: 12,
+  folderBtn: {
     width: "100%",
-    padding: "16px",
+    marginTop: 12,
+    padding: 15,
     background: "#161616",
+    color: "#bbb",
     border: "1px solid #2a2a2a",
     borderRadius: 12,
-    color: "#bbb",
-    fontSize: 14,
-    fontWeight: 700,
-    cursor: "pointer",
     fontFamily: font,
+    fontWeight: 800,
+    cursor: "pointer",
   },
   error: {
-    marginTop: 20,
-    padding: "14px 18px",
-    background: "#FF3B3012",
-    border: "1px solid #FF3B3040",
+    marginTop: 18,
+    background: "#ff3b3014",
+    border: "1px solid #ff3b3044",
+    color: "#ff7770",
     borderRadius: 10,
+    padding: 14,
     fontSize: 13,
-    color: "#FF6B6B",
-    lineHeight: 1.4,
   },
-  howto: {
-    marginTop: 32,
-    padding: "16px 20px",
+  how: {
+    marginTop: 28,
     background: "#131313",
+    border: "1px solid #1e1e1e",
     borderRadius: 12,
-    textAlign: "left",
-    fontSize: 12,
     color: "#777",
+    fontSize: 12,
+    textAlign: "left",
     lineHeight: 1.8,
-    border: "1px solid #1a1a1a",
+    padding: 16,
   },
-  resultsPage: {
+  results: {
     minHeight: "100vh",
+    background: "#0a0a0a",
+    color: "#e5e5e5",
     fontFamily: font,
-    background: "#0A0A0A",
-    color: "#E5E5E5",
     padding: 20,
   },
-  header: {
+  top: {
     marginBottom: 20,
   },
-  summary: {
-    margin: "5px 0 0",
-    fontSize: 12,
+  meta: {
     color: "#666",
+    fontSize: 12,
+    margin: 0,
   },
-  buttons: {
+  actions: {
     display: "flex",
     gap: 10,
-    marginBottom: 24,
     flexWrap: "wrap",
+    marginBottom: 24,
   },
-  primaryButton: {
+  primary: {
     flex: 1,
-    padding: "14px 20px",
-    background: "#FF3B30",
+    minWidth: 180,
+    background: "#ff3b30",
+    color: "#fff",
     border: "none",
     borderRadius: 10,
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: 800,
-    cursor: "pointer",
-    fontFamily: font,
-    minWidth: 170,
-  },
-  secondaryButton: {
     padding: "14px 20px",
+    fontFamily: font,
+    fontWeight: 900,
+    cursor: "pointer",
+  },
+  secondary: {
     background: "#1a1a1a",
+    color: "#ccc",
     border: "1px solid #333",
     borderRadius: 10,
-    color: "#ccc",
-    fontSize: 13,
-    cursor: "pointer",
+    padding: "14px 20px",
     fontFamily: font,
+    cursor: "pointer",
   },
-  sectionTitle: {
+  block: {
+    marginBottom: 28,
+  },
+  blockTitle: {
     fontSize: 11,
-    letterSpacing: 2,
     textTransform: "uppercase",
-    fontWeight: 800,
-    marginBottom: 12,
+    letterSpacing: 2,
+    fontWeight: 900,
+    marginBottom: 10,
   },
   card: {
     background: "#111",
-    border: "1px solid #1a1a1a",
+    border: "1px solid #1e1e1e",
     borderRadius: 12,
     marginBottom: 8,
     overflow: "hidden",
-    transition: "border-color 0.2s",
   },
-  cardTop: {
-    padding: "14px 16px",
-    cursor: "pointer",
+  cardHead: {
+    padding: "15px 16px",
     display: "flex",
     alignItems: "center",
     gap: 12,
+    cursor: "pointer",
   },
   cardTitle: {
-    fontSize: 14,
-    fontWeight: 800,
     color: "#fff",
+    fontSize: 14,
+    fontWeight: 900,
     marginBottom: 4,
   },
   cardMeta: {
-    fontSize: 11,
     color: "#666",
+    fontSize: 11,
   },
-  arrow: {
-    color: "#444",
-    fontSize: 14,
-    transition: "transform 0.15s",
-    flexShrink: 0,
+  chev: {
+    color: "#555",
+    transition: "transform .15s",
   },
-  cardBody: {
+  body: {
+    borderTop: "1px solid #1e1e1e",
     padding: "0 16px 16px",
-    borderTop: "1px solid #1a1a1a",
   },
   reco: {
     margin: "12px 0",
-    padding: "10px 14px",
-    background: "#ffffff05",
-    borderLeft: "3px solid #FF3B30",
+    background: "#ffffff06",
+    borderLeft: "3px solid #ff3b30",
     borderRadius: "0 8px 8px 0",
-    fontSize: 12,
     color: "#bbb",
-    lineHeight: 1.5,
+    padding: "12px 14px",
+    fontSize: 12,
+    lineHeight: 1.55,
     wordBreak: "break-word",
   },
-  urlRow: {
+  row: {
     padding: "10px 0",
-    borderBottom: "1px solid #1a1a1a",
+    borderBottom: "1px solid #1e1e1e",
   },
   url: {
     fontSize: 12,
     wordBreak: "break-all",
-    marginBottom: 5,
+    marginBottom: 6,
   },
   metrics: {
-    fontSize: 11,
     color: "#555",
+    fontSize: 11,
     display: "flex",
-    gap: 16,
+    gap: 14,
     flexWrap: "wrap",
-  },
-  footer: {
-    textAlign: "center",
-    padding: "20px 0",
-    fontSize: 10,
-    color: "#333",
-    letterSpacing: 2,
-    textTransform: "uppercase",
   },
 };
