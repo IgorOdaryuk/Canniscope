@@ -30,6 +30,7 @@ const CONTENT_WORDS = new Set([
   "guide","tips","vs","versus","comparison","how-to","diy","troubleshoot",
   "troubleshooting","signs","when-to","should-i","replacement",
   "maintenance","checklist","faq","common-problems","lifespan",
+  "statistics","stats","history","recall","recalls",
 ]);
 
 // US state abbreviations for stripping
@@ -61,26 +62,16 @@ function getPathname(url) {
 }
 
 function classifyURL(url) {
-  // Returns { service, geo, section, intent } or null if URL is not groupable.
-  // intent = "service" | "brand" | "symptom" | "modifier" | "content"
-  // Only "service" intent pages get grouped for cannibalization.
-
   try {
     let path = new URL(url).pathname.toLowerCase().replace(/\/+$/, "").replace(/^\//, "");
     const section = getSection(url);
-
-    // Strip section prefix and city-folder prefix
-    // e.g. "locations/jacksonville/dryer-repair-jacksonville-beach-fl" → "dryer-repair-jacksonville-beach-fl"
-    // e.g. "service-area/appliance-repair-in-atlanta" → "appliance-repair-in-atlanta"
     const parts = path.split("/").filter(Boolean);
 
-    // Remove known section prefixes
     if (["service-area","locations","services","category","blog"].includes(parts[0])) {
       parts.shift();
     }
-    // If locations/city-folder/slug, skip the city folder too
     if (section === "LOCATIONS" && parts.length > 1) {
-      parts.shift(); // remove the city folder (e.g., "jacksonville")
+      parts.shift();
     }
 
     const slug = parts[parts.length - 1] || "";
@@ -89,51 +80,34 @@ function classifyURL(url) {
     const slugWords = slug.split("-");
 
     // ── CHECK INTENT ──
-
-    // Brand page?
     for (const w of slugWords) {
       if (BRAND_WORDS.has(w)) return { slug, section, intent: "brand" };
     }
-    // Check multi-word brands
     for (const brand of BRAND_WORDS) {
       if (brand.includes("-") && slug.includes(brand)) return { slug, section, intent: "brand" };
     }
-
-    // Symptom page?
     for (const symptom of SYMPTOM_WORDS) {
       if (slug.includes(symptom)) return { slug, section, intent: "symptom" };
     }
-
-    // Modifier page?
     for (const mod of MODIFIER_WORDS) {
       if (slug.includes(mod)) return { slug, section, intent: "modifier" };
     }
-
-    // Content page?
     for (const cw of CONTENT_WORDS) {
       if (slug.includes(cw)) return { slug, section, intent: "content" };
     }
 
     // ── EXTRACT SERVICE + GEO ──
-    // Normalize: remove "in", remove state abbreviations, then split into
-    // service-words and geo-words.
-    // Strategy: known service patterns are multi-word (e.g., "refrigerator-repair",
-    // "appliance-repair", "washer-repair"). Everything else after the service = geo.
-
     let normalized = slug
-      .replace(/-in-/g, "-")         // "repair-in-atlanta" → "repair-atlanta"
-      .replace(/^in-/, "")           // "in-atlanta-..." → "atlanta-..."
-      .replace(/-in$/, "");          // "...-in" → "..."
+      .replace(/-in-/g, "-")
+      .replace(/^in-/, "")
+      .replace(/-in$/, "");
 
-    // Strip trailing state abbreviation
     const lastWord = normalized.split("-").pop();
     if (lastWord && STATES.has(lastWord)) {
       normalized = normalized.replace(new RegExp(`-${lastWord}$`), "");
     }
 
-    // Find service pattern: look for "X-repair" or "repair" or "installation" etc.
-    // Service = all words up to and including "repair"/"installation"/"service"/"maintenance"
-    const serviceTerms = ["repair","installation","install","service","maintenance","replacement","cleaning"];
+    const serviceTerms = ["repair","installation","install","service","replacement","cleaning"];
     const nWords = normalized.split("-");
     let serviceEnd = -1;
 
@@ -150,12 +124,10 @@ function classifyURL(url) {
       service = nWords.slice(0, serviceEnd + 1).join("-");
       geo = nWords.slice(serviceEnd + 1).filter(w => w.length > 0).join("-") || null;
     } else {
-      // No service term found — treat whole slug as a single unit
       service = normalized;
       geo = null;
     }
 
-    // Clean up
     service = service.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
     if (geo) geo = geo.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
     if (!service || service.length < 3) return null;
@@ -164,6 +136,65 @@ function classifyURL(url) {
   } catch {
     return null;
   }
+}
+
+// ─── SEVERITY SCORING ───
+
+function computeSeverity(sorted, sections) {
+  let score = 0;
+  const reasons = [];
+
+  // Factor 1: cross-section = strongest signal
+  if (sections.length >= 2) {
+    score += 40;
+    reasons.push(`Same target across ${sections.join(" + ")}`);
+  }
+
+  // Factor 2: both URLs getting traffic (not just impressions)
+  const withClicks = sorted.filter(p => p.clicks > 0);
+  if (withClicks.length >= 2) {
+    score += 25;
+    reasons.push(`${withClicks.length} URLs getting clicks (split traffic)`);
+  }
+
+  // Factor 3: close positions (both ranking, competing)
+  if (sorted.length >= 2) {
+    const positions = sorted.map(p => p.position).filter(p => p > 0 && p <= 50);
+    if (positions.length >= 2) {
+      const diff = Math.abs(positions[0] - positions[1]);
+      if (diff <= 5) {
+        score += 20;
+        reasons.push(`Close positions (${positions[0].toFixed(1)} vs ${positions[1].toFixed(1)})`);
+      } else if (diff <= 15) {
+        score += 10;
+        reasons.push(`Competing positions (${positions[0].toFixed(1)} vs ${positions[1].toFixed(1)})`);
+      }
+    }
+  }
+
+  // Factor 4: high impression volume = high opportunity cost
+  const totalImpr = sorted.reduce((s, p) => s + p.impressions, 0);
+  if (totalImpr >= 2000) {
+    score += 15;
+    reasons.push(`High volume (${totalImpr.toLocaleString()} total impressions)`);
+  } else if (totalImpr >= 500) {
+    score += 8;
+    reasons.push(`Moderate volume (${totalImpr.toLocaleString()} impressions)`);
+  }
+
+  // Factor 5: 3+ URLs = more fragmentation
+  if (sorted.length >= 3) {
+    score += 10;
+    reasons.push(`${sorted.length} URLs fragmenting authority`);
+  }
+
+  // Determine risk level from score
+  let risk;
+  if (score >= 45) risk = "HIGH";
+  else if (score >= 25) risk = "MEDIUM";
+  else risk = "LOW";
+
+  return { risk, score, reasons };
 }
 
 // ─── ANALYSIS ───
@@ -177,32 +208,21 @@ function analyzePages(pagesData) {
     position: parseFloat(row["Position"]) || 0,
   })).filter(p => p.url);
 
-  // Classify every page
   const classified = pages.map(p => {
     const c = classifyURL(p.url);
     if (!c || c.intent !== "service") return null;
     return { ...p, ...c };
   }).filter(Boolean);
 
-  // Group by exact service + exact geo
   const groups = {};
   classified.forEach(p => {
     const key = `${p.service}|${p.geo || "generic"}`;
     if (!groups[key]) groups[key] = [];
-    // No exact-URL duplicates
     if (!groups[key].find(x => x.url === p.url)) {
       groups[key].push(p);
     }
   });
 
-  // ── CRITICAL RULE: generic ≠ city pages ──
-  // /refrigerator-repair/ (generic, geo=null) should NOT group with
-  // /refrigerator-repair-tampa/ (geo=tampa).
-  // They're already in separate groups because geo differs.
-  // But double-check: a page with geo=null is "generic" key,
-  // a page with geo="tampa" is "tampa" key. ✓ They won't mix.
-
-  // Only keep groups with 2–5 pages
   const conflicts = Object.entries(groups)
     .filter(([_, ps]) => ps.length >= 2 && ps.length <= 5)
     .map(([key, ps]) => {
@@ -215,27 +235,21 @@ function analyzePages(pagesData) {
       const totalImpressions = sorted.reduce((s, p) => s + p.impressions, 0);
       const sections = [...new Set(sorted.map(p => p.section))];
 
-      // Label
       const serviceName = service.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const geoName = geo === "generic"
         ? "Generic"
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      // Risk
-      let risk = "LOW";
-      if (sections.length >= 2 && totalImpressions >= 200) risk = "HIGH";
-      else if (totalImpressions >= 1000 || sorted.length >= 3) risk = "HIGH";
-      else if (totalImpressions >= 200 || sections.length >= 2) risk = "MEDIUM";
+      // Severity with reasons
+      const { risk, score, reasons } = computeSeverity(sorted, sections);
 
-      // Winner path
       const winnerPath = getPathname(winner.url);
 
-      // Recommendation
       let recommendation;
       if (sections.length >= 2) {
         recommendation =
-          `${sorted.length} pages compete for the same service+geo across ${sections.join(" + ")}. ` +
+          `${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ` +
           `Winner by GSC data: ${winnerPath}. Consolidate — redirect ` +
           `weaker pages with 301, or clearly differentiate each page's intent and content.`;
       } else {
@@ -245,10 +259,9 @@ function analyzePages(pagesData) {
           `Redirect weaker URLs with 301 to the winner, or add canonical tags.`;
       }
 
-      // Action items per page
+      // Per-page actions
       const pageActions = sorted.map((p, i) => {
         if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
-        // If same section as winner and much fewer clicks
         if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
           return { ...p, action: "301 redirect to winner" };
         }
@@ -260,13 +273,13 @@ function analyzePages(pagesData) {
 
       return {
         label, service, geo, pages: pageActions, pageCount: sorted.length,
-        totalClicks, totalImpressions, sections, winner, risk, recommendation,
+        totalClicks, totalImpressions, sections, winner, risk, score, reasons, recommendation,
       };
     })
     .sort((a, b) => {
       const ro = { HIGH: 0, MEDIUM: 1, LOW: 2 };
       if (ro[a.risk] !== ro[b.risk]) return ro[a.risk] - ro[b.risk];
-      return b.totalImpressions - a.totalImpressions;
+      return b.score - a.score;
     });
 
   return conflicts;
@@ -302,8 +315,10 @@ function generateReportText(conflicts) {
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
       r += `#${idx + 1}: ${c.label}\n`;
-      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr\n\n`;
-      r += `${c.recommendation}\n\n`;
+      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score}\n\n`;
+      r += `Why flagged:\n`;
+      c.reasons.forEach(reason => { r += `  • ${reason}\n`; });
+      r += `\n${c.recommendation}\n\n`;
       r += `Pages:\n`;
       c.pages.forEach((p, pi) => {
         const path = getPathname(p.url);
@@ -319,6 +334,23 @@ function generateReportText(conflicts) {
   r += "  Generated by CanniScope\n";
   r += "=================================================\n";
   return r;
+}
+
+// ─── CSV EXPORT ───
+
+function generateCSV(conflicts) {
+  const rows = [["Cluster","Risk","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
+  conflicts.forEach(c => {
+    const whyFlagged = c.reasons.join("; ");
+    c.pages.forEach(p => {
+      rows.push([
+        c.label, c.risk, c.score, c.service, c.geo || "generic",
+        c.sections.join(" + "), p.url, p.clicks, p.impressions,
+        p.ctr + "%", p.position.toFixed(1), p.section, p.action, whyFlagged,
+      ]);
+    });
+  });
+  return rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
 // ─── STYLES ───
@@ -349,7 +381,7 @@ const s = {
   actionRow: { display: "flex", gap: 10, marginBottom: 32, flexWrap: "wrap" },
   primaryBtn: {
     flex: 1, padding: "14px 24px", background: "#E03E2D", border: "none", borderRadius: 10,
-    color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: font, minWidth: 160,
+    color: "#fff", fontSize: 15, fontWeight: 700, cursor: "pointer", fontFamily: font, minWidth: 120,
   },
   secBtn: {
     padding: "14px 20px", background: "#fff", border: "1px solid #ddd", borderRadius: 10,
@@ -368,17 +400,28 @@ const s = {
 // ─── COMPONENTS ───
 
 function ActionBadge({ action }) {
-  let bg, color, text;
+  let bg, color;
   if (action.startsWith("KEEP")) {
-    bg = "#E8F5E9"; color = "#2E7D32"; text = action;
+    bg = "#E8F5E9"; color = "#2E7D32";
   } else if (action.startsWith("301")) {
-    bg = "#FFF3E0"; color = "#E65100"; text = action;
+    bg = "#FFF3E0"; color = "#E65100";
   } else {
-    bg = "#FFF8E1"; color = "#F57F17"; text = action;
+    bg = "#FFF8E1"; color = "#F57F17";
   }
   return (
     <div style={{ marginTop: 4, fontSize: 12, padding: "3px 8px", background: bg, color, borderRadius: 4, display: "inline-block", fontWeight: 600 }}>
-      → {text}
+      → {action}
+    </div>
+  );
+}
+
+function WhyFlagged({ reasons }) {
+  return (
+    <div style={{ margin: "0 20px 10px", padding: "10px 14px", background: "#F8F8F6", borderRadius: 8, fontSize: 13 }}>
+      <div style={{ fontWeight: 700, color: "#999", fontSize: 11, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Why flagged</div>
+      {reasons.map((r, i) => (
+        <div key={i} style={{ color: "#666", lineHeight: 1.6 }}>• {r}</div>
+      ))}
     </div>
   );
 }
@@ -397,10 +440,12 @@ function ConflictCard({ conflict: c }) {
             {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impr
           </div>
         </div>
+        <span style={{ color: "#bbb", fontSize: 12, fontWeight: 600, marginRight: 4 }}>{c.score}</span>
         <span style={{ color: "#ccc", fontSize: 14, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>▸</span>
       </div>
       {open && (
         <div>
+          <WhyFlagged reasons={c.reasons} />
           <div style={{ margin: "0 20px 14px", padding: "14px 18px", background: rc + "08", borderLeft: `3px solid ${rc}`, borderRadius: "0 8px 8px 0", fontSize: 14, color: "#555", lineHeight: 1.6 }}>
             {c.recommendation}
           </div>
@@ -480,12 +525,22 @@ export default function CanniScope() {
 
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); processFiles(e.dataTransfer.files); };
   const onFileSelect = (e) => processFiles(e.target.files);
+
   const downloadReport = () => {
     const blob = new Blob([reportText], { type: "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = "canniscope-report.txt"; a.click();
     URL.revokeObjectURL(url);
   };
+
+  const downloadCSV = () => {
+    const csv = generateCSV(conflicts);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = "canniscope-export.csv"; a.click();
+    URL.revokeObjectURL(url);
+  };
+
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); };
 
@@ -565,7 +620,8 @@ export default function CanniScope() {
         </div>
 
         <div style={s.actionRow}>
-          <button onClick={downloadReport} style={s.primaryBtn}>📥 Download Report</button>
+          <button onClick={downloadReport} style={s.primaryBtn}>📥 Report</button>
+          <button onClick={downloadCSV} style={s.primaryBtn}>📊 CSV</button>
           <button onClick={copyReport} style={s.secBtn}>{copied ? "✓ Copied!" : "📋 Copy"}</button>
           <button onClick={reset} style={s.secBtn}>↻ New</button>
         </div>
