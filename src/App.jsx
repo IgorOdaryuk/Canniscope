@@ -318,7 +318,13 @@ function computeSeverity(sorted, sections) {
   else if (sections.length >= 2 || totalImpr >= 200) confidence = "MEDIUM";
   else confidence = "LOW";
 
-  return { risk, score, reasons, confidence };
+  // Confidence label for display
+  let confidenceLabel;
+  if (confidence === "HIGH") confidenceLabel = "High confidence duplicate";
+  else if (confidence === "MEDIUM") confidenceLabel = "Likely duplicate";
+  else confidenceLabel = "Possible overlap";
+
+  return { risk, score, reasons, confidence, confidenceLabel };
 }
 
 // ─── ANALYSIS ───
@@ -368,17 +374,14 @@ function analyzePages(pagesData) {
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      const { risk, score, reasons, confidence } = computeSeverity(sorted, sections);
+      const { risk, score, reasons, confidence, confidenceLabel } = computeSeverity(sorted, sections);
 
       // ── INTENTIONAL ARCHITECTURE DETECTION ──
-      // ROOT + SERVICE-AREA/LOCATIONS for a geo page is often intentional multi-location SEO.
-      // ROOT = broad commercial page, SERVICE-AREA/LOCATIONS = geo landing.
       const isLikelyArchitecture =
         geo !== "generic" &&
         sections.length >= 2 &&
         sections.includes("ROOT") &&
         (sections.includes("SERVICE-AREA") || sections.includes("LOCATIONS")) &&
-        // If winner is ROOT and the other is in a geo section, this is typical architecture
         (getSection(winner.url) === "ROOT" || sections.some(s => s === "SERVICE-AREA" || s === "LOCATIONS"));
 
       const winnerPath = getPathname(winner.url);
@@ -405,6 +408,16 @@ function analyzePages(pagesData) {
 
       const pageActions = sorted.map((p, i) => {
         if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
+
+        // De-prioritized: 0 clicks, tiny impressions, bad position → Google already ignoring it
+        const isDePrioritized =
+          p.clicks === 0 &&
+          p.impressions <= 10 &&
+          p.position > 30;
+        if (isDePrioritized) {
+          return { ...p, action: "Likely already de-prioritized by Google — low urgency" };
+        }
+
         if (isLikelyArchitecture && p.section !== winner.section) {
           return { ...p, action: "Review — may be intentional geo architecture" };
         }
@@ -422,7 +435,7 @@ function analyzePages(pagesData) {
       return {
         label, service, geo, pages: pageActions, pageCount: sorted.length,
         totalClicks, totalImpressions, sections, winner, risk, score, reasons, recommendation,
-        confidence, isLikelyArchitecture,
+        confidence, confidenceLabel, isLikelyArchitecture,
         isTechnical: false,
       };
     })
@@ -474,7 +487,7 @@ function generateReportText(conflicts) {
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
       r += `#${idx + 1}: ${c.label}\n`;
-      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · Confidence: ${c.confidence || "—"}\n\n`;
+      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · ${c.confidenceLabel || "—"}\n\n`;
       r += `Why flagged:\n`;
       c.reasons.forEach(reason => { r += `  • ${reason}\n`; });
       r += `\n${c.recommendation}\n\n`;
@@ -569,6 +582,8 @@ function ActionBadge({ action }) {
     bg = "#E3F2FD"; color = "#1565C0";
   } else if (action.startsWith("Review")) {
     bg = "#F3E5F5"; color = "#7B1FA2";
+  } else if (action.startsWith("Likely already")) {
+    bg = "#F5F5F5"; color = "#9E9E9E";
   } else {
     bg = "#FFF8E1"; color = "#F57F17";
   }
@@ -608,7 +623,7 @@ function ConflictCard({ conflict: c }) {
             {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impr
           </div>
         </div>
-        {c.confidence && <span style={{ fontSize: 10, fontWeight: 700, color: confColor, letterSpacing: 0.5, flexShrink: 0 }}>{c.confidence}</span>}
+        {c.confidenceLabel && <span style={{ fontSize: 10, fontWeight: 700, color: confColor, letterSpacing: 0.5, flexShrink: 0 }}>{c.confidenceLabel}</span>}
         <span style={{ color: "#bbb", fontSize: 12, fontWeight: 600, marginRight: 4 }}>{c.score}</span>
         <span style={{ color: "#ccc", fontSize: 14, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>▸</span>
       </div>
