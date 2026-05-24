@@ -559,144 +559,106 @@ function generateCSV(conflicts) {
   return rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
 
-// ─── STYLES (Dark blue gradient + Space Grotesk + JetBrains Mono) ───
+// ─── STYLES (Enterprise SaaS — light, clean, boring = good) ───
 
-const heading = "'Space Grotesk', system-ui, sans-serif";
-const mono = "'JetBrains Mono', monospace";
+const sans = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif";
+const mono = "'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace";
 
-const COLORS = {
-  bg: "#0B111A",
-  card: "rgba(255,255,255,0.05)",
-  cardBorder: "rgba(255,255,255,0.08)",
-  cardHover: "rgba(255,255,255,0.08)",
-  text: "#F3F4F6",
-  textMid: "#B4C0D0",
-  textDim: "rgba(255,255,255,0.35)",
-  accent: "#ff6b57",
-  accentBg: "rgba(255,107,87,0.12)",
-  accentBorder: "rgba(255,107,87,0.2)",
-  high: "#C0392B",
-  medium: "#D97706",
-  low: "#0F7B4F",
-  tech: "#1E4D7A",
-  purple: "#6D28D9",
-  green: "#0F7B4F",
-  keepBg: "rgba(15,123,79,0.15)",
-  keepText: "#3fb950",
-  redirectBg: "rgba(255,107,87,0.12)",
-  redirectText: "#ff6b57",
-  reviewBg: "rgba(109,40,217,0.12)",
-  reviewText: "#a78bfa",
-  deprioBg: "rgba(255,255,255,0.04)",
-  deprioText: "#6b7280",
-  techBadgeBg: "rgba(30,77,122,0.2)",
-  techBadgeText: "#58a6ff",
+const C = {
+  bg: "#f8f9fa",
+  surface: "#ffffff",
+  border: "#e5e7eb",
+  borderLight: "#f0f1f3",
+  text: "#111827",
+  textSecondary: "#6b7280",
+  textTertiary: "#9ca3af",
+  accent: "#2563eb",
+  accentLight: "#eff6ff",
+  accentBorder: "#bfdbfe",
+  high: "#dc2626",
+  highBg: "#fef2f2",
+  highBorder: "#fecaca",
+  medium: "#d97706",
+  medBg: "#fffbeb",
+  medBorder: "#fde68a",
+  low: "#059669",
+  lowBg: "#ecfdf5",
+  lowBorder: "#a7f3d0",
+  tech: "#6366f1",
+  techBg: "#eef2ff",
+  techBorder: "#c7d2fe",
 };
 
 const s = {
-  page: {
-    minHeight: "100vh",
-    fontFamily: heading,
-    background: `radial-gradient(circle at top left, rgba(37,99,235,0.18), transparent 34%), linear-gradient(135deg, #0B111A 0%, #101827 55%, #13233A 100%)`,
-    color: COLORS.text,
-    fontSize: 15,
-    lineHeight: 1.5,
-  },
-  container: { maxWidth: 820, margin: "0 auto", padding: "40px 20px" },
-  logo: { fontSize: 26, fontWeight: 700, letterSpacing: "-0.03em", color: COLORS.text, fontFamily: heading },
-  logoAccent: { color: COLORS.accent },
-  tagline: { fontSize: 11, fontFamily: mono, color: COLORS.textDim, letterSpacing: 1, marginTop: 2, marginBottom: 24 },
-  h1: { fontSize: 32, fontWeight: 700, margin: "16px 0 8px", lineHeight: 1.15, color: COLORS.text, letterSpacing: "-0.03em", fontFamily: heading },
-  subtitle: { fontSize: 14, color: COLORS.textMid, margin: "0 0 40px", lineHeight: 1.5, fontFamily: mono },
+  page: { minHeight: "100vh", fontFamily: sans, background: C.bg, color: C.text, fontSize: 14, lineHeight: 1.5 },
+  container: { maxWidth: 960, margin: "0 auto", padding: "32px 24px" },
+  h1: { fontSize: 22, fontWeight: 600, margin: "0 0 4px", color: C.text, letterSpacing: "-0.01em" },
   dropzone: (active) => ({
-    border: `2px dashed ${active ? COLORS.accent : "rgba(255,255,255,0.12)"}`,
-    borderRadius: 10, padding: "48px 28px", cursor: "pointer", textAlign: "center",
-    background: active ? "rgba(255,107,87,0.06)" : "rgba(255,255,255,0.03)",
-    backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-    transition: "all 0.15s",
+    border: `1.5px dashed ${active ? C.accent : "#d1d5db"}`, borderRadius: 8, padding: "48px 24px",
+    cursor: "pointer", textAlign: "center", background: active ? C.accentLight : C.surface, transition: "all 0.15s",
   }),
-  folderBtn: {
-    marginTop: 10, width: "100%", padding: "12px", background: "rgba(255,255,255,0.04)",
-    border: `1px solid ${COLORS.cardBorder}`, borderRadius: 8,
-    color: COLORS.textMid, fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: mono,
-  },
-  howTo: {
-    marginTop: 28, padding: "18px 22px", background: "rgba(255,255,255,0.03)",
-    borderRadius: 10, border: `1px solid ${COLORS.cardBorder}`,
-    fontSize: 13, color: COLORS.textMid, lineHeight: 1.8, fontFamily: mono,
-  },
-  error: { marginTop: 20, padding: "12px 16px", background: "rgba(192,57,43,0.1)", border: "1px solid rgba(192,57,43,0.2)", borderRadius: 8, fontSize: 13, color: "#ff6b57", fontFamily: mono },
-  clean: { marginTop: 20, padding: "12px 16px", background: "rgba(15,123,79,0.1)", border: "1px solid rgba(15,123,79,0.2)", borderRadius: 8, fontSize: 13, color: "#3fb950", fontFamily: mono },
-  statRow: { display: "flex", gap: 3, marginBottom: 20, flexWrap: "wrap" },
-  actionRow: { display: "flex", gap: 6, marginBottom: 24, flexWrap: "wrap" },
-  primaryBtn: {
-    padding: "10px 20px", background: "#1E4D7A", border: "none", borderRadius: 6,
-    color: "#FFF", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: mono,
-    display: "inline-flex", alignItems: "center", gap: 6,
-  },
-  secBtn: {
-    padding: "10px 16px", background: "rgba(255,255,255,0.04)",
-    border: `1px solid ${COLORS.cardBorder}`, borderRadius: 6,
-    color: COLORS.textMid, fontSize: 13, cursor: "pointer", fontFamily: mono,
-    display: "inline-flex", alignItems: "center", gap: 6,
-  },
+  card: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 },
+  cardHover: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" },
+  btn: (primary) => ({
+    padding: primary ? "8px 16px" : "8px 14px",
+    background: primary ? C.accent : C.surface,
+    border: primary ? "none" : `1px solid ${C.border}`,
+    borderRadius: 6, color: primary ? "#fff" : C.textSecondary,
+    fontSize: 13, fontWeight: 500, cursor: "pointer", fontFamily: sans,
+    display: "inline-flex", alignItems: "center", gap: 5,
+  }),
+  filterBtn: (active) => ({
+    padding: "6px 12px", borderRadius: 6, fontSize: 12, cursor: "pointer", fontFamily: sans,
+    border: `1px solid ${active ? C.accent : C.border}`,
+    background: active ? C.accentLight : C.surface,
+    color: active ? C.accent : C.textSecondary, fontWeight: active ? 600 : 400,
+  }),
   sectionTitle: (color) => ({
-    fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: 2, color,
-    marginBottom: 10, paddingBottom: 8, borderBottom: `1px solid ${color}30`, fontFamily: mono,
-  }),
-  glass: {
-    background: COLORS.card, backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-    border: `1px solid ${COLORS.cardBorder}`, borderRadius: 8,
-  },
-  card: (open, color) => ({
-    background: open ? COLORS.cardHover : COLORS.card,
-    backdropFilter: "blur(8px)", WebkitBackdropFilter: "blur(8px)",
-    border: `1px solid ${open ? color + "30" : COLORS.cardBorder}`,
-    borderRadius: 8, marginBottom: 6, overflow: "hidden",
+    fontSize: 12, fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.05em", color,
+    marginBottom: 8, paddingBottom: 8, borderBottom: `1px solid ${C.borderLight}`,
   }),
 };
 
-// ─── STAT BLOCK COLORS ───
-const STAT_COLORS = [
-  { bg: "#6D28D9", label: "SEO" },
-  { bg: "#C0392B", label: "High" },
-  { bg: "#D97706", label: "Medium" },
-  { bg: "#0F7B4F", label: "Tech" },
-];
-
-// ─── SECTION BADGE COLORS ───
-const SECTION_COLORS = {
-  "ROOT": { bg: "rgba(255,107,87,0.15)", color: "#ff6b57" },
-  "SERVICE-AREA": { bg: "rgba(63,185,80,0.15)", color: "#3fb950" },
-  "LOCATIONS": { bg: "rgba(88,166,255,0.15)", color: "#58a6ff" },
-  "SERVICES": { bg: "rgba(88,166,255,0.15)", color: "#58a6ff" },
-  "CATEGORY": { bg: "rgba(217,119,6,0.15)", color: "#f59e0b" },
-  "BLOG": { bg: "rgba(168,179,194,0.15)", color: "#a8b3c2" },
+// ─── RISK STYLES ───
+const RISK_STYLE = {
+  HIGH: { bg: C.highBg, border: C.highBorder, color: C.high, label: "High" },
+  MEDIUM: { bg: C.medBg, border: C.medBorder, color: C.medium, label: "Medium" },
+  LOW: { bg: C.lowBg, border: C.lowBorder, color: C.low, label: "Low" },
+  TECH: { bg: C.techBg, border: C.techBorder, color: C.tech, label: "Tech" },
 };
 
 // ─── COMPONENTS ───
 
-function ActionBadge({ action }) {
-  let bg, color;
-  if (action.startsWith("KEEP")) { bg = COLORS.keepBg; color = COLORS.keepText; }
-  else if (action.startsWith("Likely safe")) { bg = COLORS.redirectBg; color = COLORS.redirectText; }
-  else if (action.startsWith("Technical")) { bg = COLORS.techBadgeBg; color = COLORS.techBadgeText; }
-  else if (action.startsWith("Review")) { bg = COLORS.reviewBg; color = COLORS.reviewText; }
-  else if (action.startsWith("Likely already")) { bg = COLORS.deprioBg; color = COLORS.deprioText; }
-  else { bg = "rgba(255,255,255,0.06)"; color = COLORS.textMid; }
+function StatCard({ value, label, color }) {
   return (
-    <div style={{ marginTop: 6, fontSize: 11, padding: "4px 10px", background: bg, color, borderRadius: 4, display: "inline-block", fontWeight: 600, fontFamily: mono }}>
-      → {action}
+    <div style={{ ...s.card, padding: "16px 20px", flex: "1 1 120px", minWidth: 120 }}>
+      <div style={{ fontSize: 28, fontWeight: 700, color: color || C.text, letterSpacing: "-0.02em", lineHeight: 1 }}>{value}</div>
+      <div style={{ fontSize: 11, color: C.textTertiary, marginTop: 4, fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
     </div>
+  );
+}
+
+function ActionBadge({ action }) {
+  let bg, color, borderColor;
+  if (action.startsWith("KEEP")) { bg = C.lowBg; color = C.low; borderColor = C.lowBorder; }
+  else if (action.startsWith("Likely safe")) { bg = C.highBg; color = C.high; borderColor = C.highBorder; }
+  else if (action.startsWith("Technical")) { bg = C.techBg; color = C.tech; borderColor = C.techBorder; }
+  else if (action.startsWith("Review")) { bg = C.medBg; color = C.medium; borderColor = C.medBorder; }
+  else if (action.startsWith("Likely already")) { bg = "#f9fafb"; color = C.textTertiary; borderColor = C.borderLight; }
+  else { bg = "#f9fafb"; color = C.textSecondary; borderColor = C.border; }
+  return (
+    <span style={{ fontSize: 11, padding: "2px 8px", background: bg, color, border: `1px solid ${borderColor}`, borderRadius: 4, fontWeight: 500 }}>
+      {action}
+    </span>
   );
 }
 
 function WhyFlagged({ reasons }) {
   return (
-    <div style={{ margin: "0 16px 10px", padding: "10px 14px", background: "rgba(255,255,255,0.03)", borderRadius: 6, fontSize: 12, fontFamily: mono }}>
-      <div style={{ fontWeight: 600, color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: 1.5, marginBottom: 4 }}>Why flagged</div>
+    <div style={{ margin: "0 16px 8px", padding: "10px 14px", background: "#f9fafb", borderRadius: 6, border: `1px solid ${C.borderLight}` }}>
+      <div style={{ fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 }}>Why flagged</div>
       {reasons.map((r, i) => (
-        <div key={i} style={{ color: COLORS.textMid, lineHeight: 1.7 }}>• {r}</div>
+        <div key={i} style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.7 }}>• {r}</div>
       ))}
     </div>
   );
@@ -705,31 +667,25 @@ function WhyFlagged({ reasons }) {
 function DistributionBar({ conflicts }) {
   const seo = conflicts.filter(c => !c.isTechnical);
   const tech = conflicts.filter(c => c.isTechnical);
-  const h = seo.filter(c => c.risk === "HIGH").length;
-  const m = seo.filter(c => c.risk === "MEDIUM").length;
-  const l = seo.filter(c => c.risk === "LOW").length;
-  const t = tech.length;
-  const total = h + m + l + t || 1;
-  const bars = [
-    { val: h, color: "#C0392B", label: "High" },
-    { val: m, color: "#D97706", label: "Medium" },
-    { val: l, color: "#0F7B4F", label: "Low" },
-    { val: t, color: "#1E4D7A", label: "Tech" },
+  const items = [
+    { val: seo.filter(c => c.risk === "HIGH").length, ...RISK_STYLE.HIGH },
+    { val: seo.filter(c => c.risk === "MEDIUM").length, ...RISK_STYLE.MEDIUM },
+    { val: seo.filter(c => c.risk === "LOW").length, ...RISK_STYLE.LOW },
+    { val: tech.length, ...RISK_STYLE.TECH },
   ].filter(b => b.val > 0);
 
   return (
-    <div style={{ ...s.glass, padding: "14px 16px", marginBottom: 14 }}>
-      <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: COLORS.textDim, marginBottom: 10 }}>Distribution</div>
-      <div style={{ display: "flex", gap: 2, height: 26, borderRadius: 4, overflow: "hidden" }}>
-        {bars.map((b, i) => (
-          <div key={i} style={{ flex: b.val, background: b.color, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: mono, fontSize: 12, fontWeight: 600, color: "rgba(255,255,255,0.85)" }}>{b.val}</div>
+    <div style={{ ...s.card, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Distribution</div>
+      <div style={{ display: "flex", gap: 2, height: 24, borderRadius: 4, overflow: "hidden" }}>
+        {items.map((b, i) => (
+          <div key={i} style={{ flex: b.val, background: b.color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 600, color: "#fff" }}>{b.val}</div>
         ))}
       </div>
-      <div style={{ display: "flex", gap: 14, marginTop: 8 }}>
-        {bars.map((b, i) => (
-          <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontFamily: mono, fontSize: 10, color: COLORS.textDim }}>
-            <span style={{ width: 7, height: 7, borderRadius: 2, background: b.color, display: "inline-block" }} />
-            {b.label} ({b.val})
+      <div style={{ display: "flex", gap: 16, marginTop: 8 }}>
+        {items.map((b, i) => (
+          <span key={i} style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: C.textTertiary }}>
+            <span style={{ width: 8, height: 8, borderRadius: 2, background: b.color }} /> {b.label} ({b.val})
           </span>
         ))}
       </div>
@@ -738,81 +694,96 @@ function DistributionBar({ conflicts }) {
 }
 
 function SectionTree({ conflicts }) {
-  const sectionCounts = {};
-  const sectionExamples = {};
-  conflicts.forEach(c => {
-    c.pages.forEach(p => {
-      const sec = p.section || getSection(p.url);
-      sectionCounts[sec] = (sectionCounts[sec] || 0) + 1;
-      if (!sectionExamples[sec]) sectionExamples[sec] = getPathname(p.url);
-    });
-  });
-  const sorted = Object.entries(sectionCounts).sort((a, b) => b[1] - a[1]);
+  const counts = {};
+  const examples = {};
+  conflicts.forEach(c => c.pages.forEach(p => {
+    const sec = p.section || getSection(p.url);
+    counts[sec] = (counts[sec] || 0) + 1;
+    if (!examples[sec]) examples[sec] = getPathname(p.url);
+  }));
+  const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
   const max = sorted[0]?.[1] || 1;
+  const SEC_C = {
+    "ROOT": C.high, "SERVICE-AREA": C.low, "LOCATIONS": C.accent,
+    "SERVICES": C.accent, "CATEGORY": C.medium, "BLOG": C.textTertiary,
+  };
 
   return (
-    <div style={{ ...s.glass, padding: "14px 16px", marginBottom: 14 }}>
-      <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: COLORS.textDim, marginBottom: 10 }}>Conflicts by section</div>
-      {sorted.map(([sec, count]) => {
-        const sc = SECTION_COLORS[sec] || { bg: "rgba(255,255,255,0.08)", color: COLORS.textMid };
-        return (
-          <div key={sec} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-            <span style={{ fontFamily: mono, fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 3, minWidth: 90, textAlign: "center", background: sc.bg, color: sc.color }}>{sec.toLowerCase()}</span>
-            <span style={{ fontFamily: mono, fontSize: 12, color: COLORS.textMid, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sectionExamples[sec]} ...</span>
-            <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 600, color: COLORS.text, minWidth: 20, textAlign: "right" }}>{count}</span>
-            <div style={{ width: 50, height: 3, background: "rgba(255,255,255,0.06)", borderRadius: 2, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${(count / max) * 100}%`, background: sc.color, borderRadius: 2 }} />
-            </div>
+    <div style={{ ...s.card, padding: "14px 16px" }}>
+      <div style={{ fontSize: 11, fontWeight: 600, color: C.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Conflicts by section</div>
+      {sorted.map(([sec, count]) => (
+        <div key={sec} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: `1px solid ${C.borderLight}` }}>
+          <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 6px", borderRadius: 3, background: (SEC_C[sec] || C.textTertiary) + "12", color: SEC_C[sec] || C.textTertiary, minWidth: 80, textAlign: "center", fontFamily: mono }}>{sec.toLowerCase()}</span>
+          <span style={{ fontSize: 12, color: C.textTertiary, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontFamily: mono }}>{examples[sec]}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: C.text, minWidth: 20, textAlign: "right" }}>{count}</span>
+          <div style={{ width: 48, height: 3, background: C.borderLight, borderRadius: 2, overflow: "hidden" }}>
+            <div style={{ height: "100%", width: `${(count / max) * 100}%`, background: SEC_C[sec] || C.textTertiary, borderRadius: 2 }} />
           </div>
-        );
-      })}
+        </div>
+      ))}
     </div>
   );
 }
 
 function ConflictCard({ conflict: c }) {
   const [open, setOpen] = useState(false);
-  const rc = c.isTechnical ? COLORS.tech : c.risk === "HIGH" ? COLORS.high : c.risk === "MEDIUM" ? COLORS.medium : COLORS.low;
-  const badge = c.isTechnical ? "TECH" : c.risk;
-  const confColor = c.confidence === "HIGH" ? COLORS.accent : c.confidence === "MEDIUM" ? "#D97706" : COLORS.textDim;
+  const rs = c.isTechnical ? RISK_STYLE.TECH : RISK_STYLE[c.risk] || RISK_STYLE.LOW;
 
   return (
-    <div style={s.card(open, rc)}>
-      <div onClick={() => setOpen(!open)} style={{ padding: "14px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10 }}>
-        <span style={{ padding: "3px 8px", borderRadius: 3, background: `${rc}30`, color: rc === COLORS.high ? COLORS.accent : rc === COLORS.tech ? "#58a6ff" : rc === COLORS.medium ? "#f59e0b" : "#3fb950", fontSize: 10, fontWeight: 600, fontFamily: mono, flexShrink: 0 }}>{badge.toLowerCase()}</span>
+    <div style={{ ...s.card, marginBottom: 6, overflow: "hidden", borderColor: open ? rs.border : C.border }}>
+      <div onClick={() => setOpen(!open)} style={{ padding: "12px 16px", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, transition: "background 0.1s" }}
+           onMouseEnter={e => e.currentTarget.style.background = "#fafbfc"}
+           onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+        <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 3, background: rs.bg, color: rs.color, border: `1px solid ${rs.border}` }}>{rs.label}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: COLORS.text, fontFamily: heading }}>
-            {c.isLikelyArchitecture && <span style={{ fontSize: 9, fontWeight: 600, padding: "2px 6px", borderRadius: 3, background: "rgba(109,40,217,0.12)", color: "#a78bfa", fontFamily: mono, marginRight: 6 }}>architecture overlap</span>}{c.label}
+          <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>
+            {c.isLikelyArchitecture && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: C.techBg, color: C.tech, border: `1px solid ${C.techBorder}`, marginRight: 6 }}>architecture</span>}
+            {c.label}
           </div>
-          <div style={{ fontSize: 11, color: COLORS.textMid, marginTop: 2, fontFamily: mono }}>
+          <div style={{ fontSize: 12, color: C.textTertiary, marginTop: 2 }}>
             {c.sections.join(" + ")} · {c.pageCount} URLs · {c.totalClicks} clicks · {c.totalImpressions.toLocaleString()} impr
           </div>
         </div>
-        {!c.isTechnical && <span style={{ fontSize: 10, fontWeight: 600, color: COLORS.textMid, fontFamily: mono, flexShrink: 0 }}>Impact: <span style={{ color: rc === COLORS.high ? COLORS.accent : rc === COLORS.medium ? "#f59e0b" : "#3fb950" }}>{c.risk}</span> · Confidence: <span style={{ color: confColor }}>{c.confidence}</span></span>}
-        <span style={{ fontFamily: heading, fontSize: 22, fontWeight: 700, color: COLORS.text, minWidth: 36, textAlign: "right", opacity: 0.85 }}>{c.score}</span>
-        <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 14, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s", flexShrink: 0 }}>▸</span>
+        {!c.isTechnical && (
+          <span style={{ fontSize: 10, color: C.textTertiary }}>
+            <span style={{ color: rs.color, fontWeight: 600 }}>{c.risk}</span>
+            {" · "}
+            <span style={{ fontWeight: 500 }}>{c.confidence}</span>
+          </span>
+        )}
+        <span style={{ fontSize: 18, fontWeight: 700, color: C.text, minWidth: 36, textAlign: "right", opacity: 0.6 }}>{c.score}</span>
+        <span style={{ color: C.textTertiary, fontSize: 12, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
       </div>
       {open && (
-        <div>
+        <div style={{ borderTop: `1px solid ${C.borderLight}` }}>
           <WhyFlagged reasons={c.reasons} />
-          <div style={{ margin: "0 16px 12px", padding: "12px 16px", background: `${rc}10`, borderLeft: `3px solid ${rc}`, borderRadius: "0 6px 6px 0", fontSize: 13, color: COLORS.textMid, lineHeight: 1.6, fontFamily: mono }}>
+          <div style={{ margin: "0 16px 10px", padding: "10px 14px", background: rs.bg, borderLeft: `3px solid ${rs.color}`, borderRadius: "0 6px 6px 0", fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>
             {c.recommendation}
           </div>
-          {c.pages.map((p, pi) => (
-            <div key={pi} style={{ padding: "10px 16px", borderTop: "1px solid rgba(255,255,255,0.08)", background: pi === 0 ? "rgba(63,185,80,0.05)" : "transparent" }}>
-              <div style={{ fontSize: 13, fontWeight: pi === 0 ? 600 : 400, color: pi === 0 ? COLORS.keepText : COLORS.text, wordBreak: "break-all", marginBottom: 4, fontFamily: mono }}>
-                {pi === 0 && "👑 "}{getPathname(p.url)}
-              </div>
-              <div style={{ fontSize: 11, color: COLORS.textMid, display: "flex", gap: 14, flexWrap: "wrap", fontFamily: mono }}>
-                <span>Clicks: <span style={{ color: COLORS.text, fontWeight: 600 }}>{p.clicks}</span></span>
-                <span>Impr: <span style={{ color: COLORS.text, fontWeight: 600 }}>{p.impressions.toLocaleString()}</span></span>
-                <span>CTR: <span style={{ color: COLORS.text, fontWeight: 600 }}>{p.ctr}%</span></span>
-                <span>Pos: <span style={{ color: COLORS.text, fontWeight: 600 }}>{p.position.toFixed(1)}</span></span>
-                <span style={{ fontSize: 10, color: COLORS.textDim }}>{p.section}</span>
-              </div>
-              <ActionBadge action={p.action} />
-            </div>
-          ))}
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr style={{ borderBottom: `1px solid ${C.borderLight}` }}>
+                <th style={{ padding: "6px 16px", textAlign: "left", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>URL</th>
+                <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Clicks</th>
+                <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Impr</th>
+                <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Pos</th>
+                <th style={{ padding: "6px 16px", textAlign: "left", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {c.pages.map((p, pi) => (
+                <tr key={pi} style={{ borderBottom: `1px solid ${C.borderLight}`, background: pi === 0 ? C.lowBg : "transparent" }}>
+                  <td style={{ padding: "8px 16px", fontFamily: mono, fontSize: 12, color: pi === 0 ? C.low : C.text, fontWeight: pi === 0 ? 600 : 400, wordBreak: "break-all", maxWidth: 300 }}>
+                    {pi === 0 && "👑 "}{getPathname(p.url)}
+                  </td>
+                  <td style={{ padding: "8px", textAlign: "right", fontWeight: 600, fontFamily: mono }}>{p.clicks}</td>
+                  <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.impressions.toLocaleString()}</td>
+                  <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.position.toFixed(1)}</td>
+                  <td style={{ padding: "8px 16px" }}><ActionBadge action={p.action} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
@@ -831,14 +802,13 @@ export default function CanniScope() {
   const [cleanMsg, setCleanMsg] = useState(null);
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
-  const [confFilter, setConfFilter] = useState("all"); // "all" | "HIGH" | "MEDIUM"
+  const [confFilter, setConfFilter] = useState("all");
 
   const processFiles = (files) => {
     setError(null); setCleanMsg(null); setLoading(true); setCopied(false);
     const csvFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith(".csv"));
     if (csvFiles.length === 0) { setError("No CSV files found."); setLoading(false); return; }
-    let pagesData = null;
-    let done = 0;
+    let pagesData = null; let done = 0;
     csvFiles.forEach(file => {
       Papa.parse(file, {
         header: true, skipEmptyLines: true,
@@ -850,7 +820,7 @@ export default function CanniScope() {
             if (!pagesData) { setError("Couldn't find Pages.csv. Upload files from your GSC export."); setLoading(false); return; }
             const { conflicts: results, ignoredCounts: ignored, totalPages: tp } = analyzePages(pagesData);
             setIgnoredCounts(ignored); setTotalPages(tp);
-            if (results.length === 0) { setCleanMsg("No duplicate URL targets found — your site structure looks clean."); setLoading(false); return; }
+            if (results.length === 0) { setCleanMsg("No duplicate URL targets found — site structure looks clean."); setLoading(false); return; }
             setConflicts(results); setReportText(generateReportText(results)); setLoading(false);
           }
         },
@@ -864,30 +834,29 @@ export default function CanniScope() {
   const downloadReport = () => { const b = new Blob([reportText], { type: "text/plain;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-report.txt"; a.click(); URL.revokeObjectURL(u); };
   const downloadCSV = () => { const csv = generateCSV(conflicts); const b = new Blob([csv], { type: "text/csv;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-export.csv"; a.click(); URL.revokeObjectURL(u); };
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); };
+  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); setConfFilter("all"); };
 
-  // ── UPLOAD SCREEN ──
   if (!conflicts) {
     return (
       <div style={s.page}>
         <div style={{ ...s.container, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
-          <div style={{ textAlign: "center", maxWidth: 520, width: "100%" }}>
-            <div style={s.logo}>Canni<span style={s.logoAccent}>Scope</span></div>
-            <div style={s.tagline}>duplicate url target detector</div>
-            <h1 style={{ ...s.h1, textAlign: "center" }}>Find pages <span style={{ color: COLORS.accent }}>fighting</span> each other on Google</h1>
-            <p style={{ ...s.subtitle, textAlign: "center" }}>Upload your GSC export. Surface duplicate URL targets, structure conflicts, and trailing slash issues.</p>
+          <div style={{ textAlign: "center", maxWidth: 480, width: "100%" }}>
+            <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 4 }}>CanniScope</div>
+            <div style={{ fontSize: 12, color: C.textTertiary, marginBottom: 28 }}>Duplicate URL Target Detector</div>
+            <h1 style={{ fontSize: 28, fontWeight: 600, color: C.text, lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 8 }}>Find duplicate URL targets on your site</h1>
+            <p style={{ fontSize: 14, color: C.textSecondary, marginBottom: 32, lineHeight: 1.6 }}>Upload Pages.csv from Google Search Console. Surface structural conflicts, service-area overlaps, and trailing slash issues.</p>
             <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop} onClick={() => document.getElementById("csv-input").click()} style={s.dropzone(dragOver)}>
-              <div style={{ fontSize: 36, marginBottom: 12, color: COLORS.accent }}>⚔️</div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: COLORS.text, marginBottom: 4 }}>{loading ? "Analyzing..." : "Drop CSV files here"}</div>
-              <div style={{ fontSize: 12, color: COLORS.textDim, fontFamily: mono }}>Pages.csv from GSC export</div>
+              <div style={{ fontSize: 32, marginBottom: 10 }}>📄</div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: C.text, marginBottom: 4 }}>{loading ? "Analyzing..." : "Drop CSV files here"}</div>
+              <div style={{ fontSize: 12, color: C.textTertiary }}>or click to browse</div>
               <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
-            <button onClick={() => document.getElementById("folder-input").click()} style={s.folderBtn}>Or select entire export folder</button>
+            <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8 }}>Select entire export folder</button>
             <input id="folder-input" type="file" webkitdirectory="" directory="" onChange={onFileSelect} style={{ display: "none" }} />
-            {error && <div style={s.error}>{error}</div>}
-            {cleanMsg && <div style={s.clean}>{cleanMsg}</div>}
-            <div style={s.howTo}>
-              <div style={{ fontWeight: 600, color: COLORS.textMid, marginBottom: 6, fontSize: 10, textTransform: "uppercase", letterSpacing: 2 }}>How to get the file</div>
+            {error && <div style={{ marginTop: 16, padding: "10px 14px", background: C.highBg, border: `1px solid ${C.highBorder}`, borderRadius: 6, fontSize: 13, color: C.high }}>{error}</div>}
+            {cleanMsg && <div style={{ marginTop: 16, padding: "10px 14px", background: C.lowBg, border: `1px solid ${C.lowBorder}`, borderRadius: 6, fontSize: 13, color: C.low }}>{cleanMsg}</div>}
+            <div style={{ marginTop: 24, padding: "14px 18px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.textSecondary, lineHeight: 1.8, textAlign: "left" }}>
+              <div style={{ fontWeight: 600, color: C.text, marginBottom: 4, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>How to get the file</div>
               1. Google Search Console → Performance<br/>
               2. Set date range (3–6 months recommended)<br/>
               3. Click Export → Download CSV<br/>
@@ -899,7 +868,6 @@ export default function CanniScope() {
     );
   }
 
-  // ── RESULTS SCREEN ──
   const seo = conflicts.filter(c => !c.isTechnical);
   const tech = conflicts.filter(c => c.isTechnical);
   const high = seo.filter(c => c.risk === "HIGH").length;
@@ -907,139 +875,110 @@ export default function CanniScope() {
   const low = seo.filter(c => c.risk === "LOW").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
 
-  const statData = [
-    { val: seo.length, ...STAT_COLORS[0] },
-    { val: high, ...STAT_COLORS[1] },
-    { val: medium, ...STAT_COLORS[2] },
-    { val: tech.length, ...STAT_COLORS[3] },
-  ];
+  const filterFn = (c) => confFilter === "all" ? true : confFilter === "HIGH" ? c.confidence === "HIGH" : (c.confidence === "HIGH" || c.confidence === "MEDIUM");
+  const filteredSeo = seo.filter(filterFn);
+  const fHigh = filteredSeo.filter(c => c.risk === "HIGH");
+  const fMed = filteredSeo.filter(c => c.risk === "MEDIUM");
+  const fLow = filteredSeo.filter(c => c.risk === "LOW");
+
+  const topActions = seo.filter(c => c.confidence === "HIGH" && c.risk === "HIGH").sort((a, b) => b.score - a.score).slice(0, 5);
 
   return (
     <div style={s.page}>
       <div style={s.container}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={s.logo}>Canni<span style={s.logoAccent}>Scope</span></div>
-            <div style={s.tagline}>duplicate url target detector</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>CanniScope</div>
           </div>
-          <div style={s.actionRow}>
-            <button onClick={downloadReport} style={s.primaryBtn}>Export Report</button>
-            <button onClick={downloadCSV} style={s.primaryBtn}>Export CSV</button>
-            <button onClick={copyReport} style={s.secBtn}>{copied ? "✓ Copied" : "Copy"}</button>
-            <button onClick={reset} style={s.secBtn}>New Scan</button>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button onClick={downloadReport} style={s.btn(true)}>Export Report</button>
+            <button onClick={downloadCSV} style={s.btn(true)}>Export CSV</button>
+            <button onClick={copyReport} style={s.btn(false)}>{copied ? "✓ Copied" : "Copy"}</button>
+            <button onClick={reset} style={s.btn(false)}>New Scan</button>
           </div>
         </div>
 
-        <h2 style={{ ...s.h1, fontSize: 24, margin: "0 0 4px" }}>
-          {seo.length + tech.length} possible clusters found
-        </h2>
-        <p style={{ fontSize: 12, color: COLORS.textMid, margin: "0 0 16px", fontFamily: mono }}>
-          {seo.length} SEO clusters · {tech.length} technical · {totalURLs} URLs
+        <h2 style={s.h1}>{conflicts.length} possible clusters found</h2>
+        <p style={{ fontSize: 13, color: C.textTertiary, margin: "0 0 16px" }}>
+          {seo.length} SEO · {tech.length} technical · {totalURLs} URLs involved
         </p>
 
-        <div style={{ padding: "8px 14px", background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.15)", borderRadius: 6, marginBottom: 16, fontSize: 11, color: "#D97706", fontFamily: mono }}>
-          Experimental beta — may produce false positives. Always review manually before redirecting.
+        <div style={{ padding: "8px 12px", background: C.medBg, border: `1px solid ${C.medBorder}`, borderRadius: 6, marginBottom: 16, fontSize: 12, color: C.medium }}>
+          Experimental beta — may produce false positives. Always review manually before making redirects.
         </div>
 
-        <div style={s.statRow}>
-          {statData.map((item, i) => (
-            <div key={i} style={{ flex: "1 1 80px", padding: "14px 12px", background: item.bg, borderRadius: 6, textAlign: "center", minWidth: 80 }}>
-              <div style={{ fontFamily: heading, fontSize: 28, fontWeight: 700, color: "#FFF", letterSpacing: "-0.03em", lineHeight: 1 }}>{item.val}</div>
-              <div style={{ fontFamily: mono, fontSize: 9, textTransform: "uppercase", letterSpacing: 2, marginTop: 3, color: "rgba(255,255,255,0.55)" }}>{item.label}</div>
-            </div>
-          ))}
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+          <StatCard value={seo.length} label="SEO clusters" />
+          <StatCard value={high} label="High risk" color={C.high} />
+          <StatCard value={medium} label="Medium risk" color={C.medium} />
+          <StatCard value={tech.length} label="Technical" color={C.tech} />
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
           <DistributionBar conflicts={conflicts} />
           <SectionTree conflicts={conflicts} />
         </div>
 
-        <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
-          {[{ label: "All clusters", val: "all" }, { label: "High confidence only", val: "HIGH" }, { label: "Likely + High", val: "MEDIUM" }].map(f => (
-            <button key={f.val} onClick={() => setConfFilter(f.val)} style={{
-              padding: "7px 14px", borderRadius: 5, fontSize: 11, fontFamily: mono, cursor: "pointer",
-              border: confFilter === f.val ? "1px solid rgba(255,255,255,0.2)" : `1px solid ${COLORS.cardBorder}`,
-              background: confFilter === f.val ? "rgba(255,255,255,0.08)" : "transparent",
-              color: confFilter === f.val ? COLORS.text : COLORS.textDim,
-              fontWeight: confFilter === f.val ? 600 : 400,
-            }}>{f.label}</button>
+        {topActions.length > 0 && (
+          <div style={{ ...s.card, padding: "14px 18px", marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 600, color: C.textTertiary, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 10 }}>Start here — top priority</div>
+            {topActions.map((c, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 0", borderBottom: i < topActions.length - 1 ? `1px solid ${C.borderLight}` : "none" }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: C.textTertiary, minWidth: 20 }}>{i + 1}.</span>
+                <span style={{ fontSize: 13, fontWeight: 500, color: C.text, flex: 1 }}>{c.label}</span>
+                <span style={{ fontSize: 11, color: C.textTertiary }}>{c.sections.join(" + ")}</span>
+                <span style={{ fontSize: 15, fontWeight: 600, color: C.text, opacity: 0.5, minWidth: 30, textAlign: "right" }}>{c.score}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
+          {[{ label: "All", val: "all" }, { label: "High confidence", val: "HIGH" }, { label: "Likely + High", val: "MEDIUM" }].map(f => (
+            <button key={f.val} onClick={() => setConfFilter(f.val)} style={s.filterBtn(confFilter === f.val)}>{f.label}</button>
           ))}
         </div>
 
-        {(() => {
-          const topActions = seo
-            .filter(c => c.confidence === "HIGH" && c.risk === "HIGH")
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 5);
-          if (topActions.length === 0) return null;
-          return (
-            <div style={{ ...s.glass, padding: "16px 18px", marginBottom: 20 }}>
-              <div style={{ fontFamily: mono, fontSize: 10, letterSpacing: 2, textTransform: "uppercase", color: COLORS.textDim, marginBottom: 10 }}>Start here — top priority actions</div>
-              {topActions.map((c, i) => (
-                <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 0", borderBottom: i < topActions.length - 1 ? "1px solid rgba(255,255,255,0.06)" : "none" }}>
-                  <span style={{ fontFamily: heading, fontSize: 14, fontWeight: 700, color: COLORS.text, minWidth: 20 }}>{i + 1}.</span>
-                  <span style={{ fontFamily: heading, fontSize: 13, fontWeight: 600, color: COLORS.text, flex: 1 }}>{c.label}</span>
-                  <span style={{ fontFamily: mono, fontSize: 10, color: COLORS.textMid }}>{c.sections.join(" + ")}</span>
-                  <span style={{ fontFamily: heading, fontSize: 16, fontWeight: 700, color: COLORS.text, opacity: 0.7 }}>{c.score}</span>
-                </div>
-              ))}
-            </div>
-          );
-        })()}
-
-        {(() => {
-          const filterFn = (c) => confFilter === "all" ? true : confFilter === "HIGH" ? c.confidence === "HIGH" : (c.confidence === "HIGH" || c.confidence === "MEDIUM");
-          const filteredSeo = seo.filter(filterFn);
-          const fHigh = filteredSeo.filter(c => c.risk === "HIGH");
-          const fMed = filteredSeo.filter(c => c.risk === "MEDIUM");
-          const fLow = filteredSeo.filter(c => c.risk === "LOW");
-          return (
-            <>
-              {fHigh.length > 0 && (
-                <div style={{ marginBottom: 28 }}>
-                  <div style={s.sectionTitle(COLORS.accent)}>High risk — fix first ({fHigh.length})</div>
-                  {fHigh.map((c, i) => <ConflictCard key={i} conflict={c} />)}
-                </div>
-              )}
-              {fMed.length > 0 && (
-                <div style={{ marginBottom: 28 }}>
-                  <div style={s.sectionTitle("#D97706")}>Medium risk — check ({fMed.length})</div>
-                  {fMed.map((c, i) => <ConflictCard key={i} conflict={c} />)}
-                </div>
-              )}
-              {fLow.length > 0 && (
-                <div style={{ marginBottom: 28 }}>
-                  <div style={s.sectionTitle("#0F7B4F")}>Low risk — monitor ({fLow.length})</div>
-                  {fLow.map((c, i) => <ConflictCard key={i} conflict={c} />)}
-                </div>
-              )}
-            </>
-          );
-        })()}
+        {fHigh.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(C.high)}>High risk — fix first ({fHigh.length})</div>
+            {fHigh.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
+        {fMed.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(C.medium)}>Medium risk — review ({fMed.length})</div>
+            {fMed.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
+        {fLow.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(C.low)}>Low risk — monitor ({fLow.length})</div>
+            {fLow.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
         {tech.length > 0 && (
-          <div style={{ marginBottom: 28 }}>
-            <div style={s.sectionTitle("#58a6ff")}>Technical duplicates ({tech.length})</div>
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(C.tech)}>Technical duplicates ({tech.length})</div>
             {tech.map((c, i) => <ConflictCard key={i} conflict={c} />)}
           </div>
         )}
 
         {ignoredCounts && (
-          <div style={{ ...s.glass, marginBottom: 28, padding: "18px 22px" }}>
-            <div style={{ fontWeight: 600, color: COLORS.textDim, fontSize: 10, textTransform: "uppercase", letterSpacing: 2, marginBottom: 10, fontFamily: mono }}>Why NOT flagged</div>
-            <div style={{ fontSize: 12, color: COLORS.textMid, lineHeight: 1.8, fontFamily: mono }}>
-              {totalPages > 0 && <div>Analyzed <span style={{ color: COLORS.text, fontWeight: 600 }}>{totalPages}</span> pages total</div>}
-              {ignoredCounts.brand > 0 && <div>• <span style={{ fontWeight: 600, color: COLORS.text }}>{ignoredCounts.brand}</span> brand-specific pages skipped (different intent)</div>}
-              {ignoredCounts.symptom > 0 && <div>• <span style={{ fontWeight: 600, color: COLORS.text }}>{ignoredCounts.symptom}</span> symptom/troubleshooting pages skipped</div>}
-              {ignoredCounts.modifier > 0 && <div>• <span style={{ fontWeight: 600, color: COLORS.text }}>{ignoredCounts.modifier}</span> modifier pages skipped (cost, best, near-me, etc.)</div>}
-              {ignoredCounts.content > 0 && <div>• <span style={{ fontWeight: 600, color: COLORS.text }}>{ignoredCounts.content}</span> content/informational pages skipped</div>}
-              {ignoredCounts.noServiceTerm > 0 && <div>• <span style={{ fontWeight: 600, color: COLORS.text }}>{ignoredCounts.noServiceTerm}</span> non-service pages skipped</div>}
-              <div style={{ marginTop: 8, fontSize: 11, color: COLORS.textDim }}>These pages have different search intent and are not considered duplicate targets.</div>
+          <div style={{ ...s.card, marginBottom: 24, padding: "14px 18px" }}>
+            <div style={{ fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 8 }}>Why NOT flagged</div>
+            <div style={{ fontSize: 12, color: C.textSecondary, lineHeight: 1.8 }}>
+              {totalPages > 0 && <div>Analyzed <span style={{ color: C.text, fontWeight: 600 }}>{totalPages}</span> pages total</div>}
+              {ignoredCounts.brand > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.brand}</span> brand-specific pages skipped</div>}
+              {ignoredCounts.symptom > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.symptom}</span> symptom pages skipped</div>}
+              {ignoredCounts.modifier > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.modifier}</span> modifier pages skipped (cost, best, near-me)</div>}
+              {ignoredCounts.content > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.content}</span> content pages skipped</div>}
+              {ignoredCounts.noServiceTerm > 0 && <div>• <span style={{ fontWeight: 600 }}>{ignoredCounts.noServiceTerm}</span> non-service pages skipped</div>}
             </div>
           </div>
         )}
 
-        <div style={{ textAlign: "center", padding: "28px 0 12px", fontSize: 11, color: COLORS.textDim, letterSpacing: 2, fontFamily: mono }}>
+        <div style={{ textAlign: "center", padding: "24px 0 8px", fontSize: 11, color: C.textTertiary }}>
           CanniScope · Experimental Beta
         </div>
       </div>
