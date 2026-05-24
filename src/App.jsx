@@ -592,9 +592,9 @@ const C = {
 const s = {
   page: { minHeight: "100vh", fontFamily: sans, background: C.bg, color: C.text, fontSize: 14, lineHeight: 1.5 },
   container: { maxWidth: 960, margin: "0 auto", padding: "32px 24px" },
-  h1: { fontSize: 22, fontWeight: 600, margin: "0 0 4px", color: C.text, letterSpacing: "-0.01em" },
+  h1: { fontSize: 20, fontWeight: 600, margin: "0 0 4px", color: C.text, letterSpacing: "-0.02em", lineHeight: 1.2 },
   dropzone: (active) => ({
-    border: `1.5px dashed ${active ? C.accent : "#d1d5db"}`, borderRadius: 8, padding: "48px 24px",
+    border: `1.5px dashed ${active ? C.accent : "#d1d5db"}`, borderRadius: 8, padding: "32px 24px",
     cursor: "pointer", textAlign: "center", background: active ? C.accentLight : C.surface, transition: "all 0.15s",
   }),
   card: { background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8 },
@@ -820,7 +820,7 @@ export default function CanniScope() {
             if (!pagesData) { setError("Couldn't find Pages.csv. Upload files from your GSC export."); setLoading(false); return; }
             const { conflicts: results, ignoredCounts: ignored, totalPages: tp } = analyzePages(pagesData);
             setIgnoredCounts(ignored); setTotalPages(tp);
-            if (results.length === 0) { setCleanMsg("No duplicate URL targets found — site structure looks clean."); setLoading(false); return; }
+            if (results.length === 0) { setCleanMsg(`Scanned ${tp} pages — no duplicate URL targets found. Structure looks clean.`); setLoading(false); return; }
             setConflicts(results); setReportText(generateReportText(results)); setLoading(false);
           }
         },
@@ -841,14 +841,16 @@ export default function CanniScope() {
       <div style={s.page}>
         <div style={{ ...s.container, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
           <div style={{ textAlign: "center", maxWidth: 480, width: "100%" }}>
-            <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 4 }}>CanniScope</div>
-            <div style={{ fontSize: 12, color: C.textTertiary, marginBottom: 28 }}>Duplicate URL Target Detector</div>
-            <h1 style={{ fontSize: 28, fontWeight: 600, color: C.text, lineHeight: 1.2, letterSpacing: "-0.02em", marginBottom: 8 }}>Find duplicate URL targets on your site</h1>
-            <p style={{ fontSize: 14, color: C.textSecondary, marginBottom: 32, lineHeight: 1.6 }}>Upload Pages.csv from Google Search Console. Surface structural conflicts, service-area overlaps, and trailing slash issues.</p>
+            <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 4, letterSpacing: "-0.02em" }}>CanniScope</div>
+            <div style={{ display: "inline-block", fontSize: 10, fontWeight: 600, color: C.textTertiary, background: C.borderLight, padding: "3px 10px", borderRadius: 10, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 20 }}>Built for local SEO structures</div>
+            <h1 style={{ fontSize: 24, fontWeight: 600, color: C.text, lineHeight: 1.15, letterSpacing: "-0.025em", marginBottom: 6 }}>Find duplicate URL targets<br/>on your site</h1>
+            <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24, lineHeight: 1.5 }}>Upload Pages.csv from Google Search Console. Surface structural conflicts, service-area overlaps, and trailing slash issues.</p>
             <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop} onClick={() => document.getElementById("csv-input").click()} style={s.dropzone(dragOver)}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>📄</div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: C.text, marginBottom: 4 }}>{loading ? "Analyzing..." : "Drop CSV files here"}</div>
-              <div style={{ fontSize: 12, color: C.textTertiary }}>or click to browse</div>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
+                <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#059669" + "14", color: "#059669", border: "1px solid #059669" + "30", fontFamily: mono, letterSpacing: "0.03em" }}>.CSV</span>
+              </div>
+              <div style={{ fontSize: 14, fontWeight: 500, color: C.text, marginBottom: 3 }}>{loading ? "Analyzing..." : "Drop your GSC export here"}</div>
+              <div style={{ fontSize: 12, color: C.textTertiary }}>Pages.csv · or click to browse</div>
               <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
             <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8 }}>Select entire export folder</button>
@@ -888,7 +890,8 @@ export default function CanniScope() {
       <div style={s.container}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>CanniScope</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, letterSpacing: "-0.02em" }}>CanniScope</div>
+            <div style={{ fontSize: 9, fontWeight: 600, color: C.textTertiary, letterSpacing: "0.05em", textTransform: "uppercase" }}>Local SEO audit</div>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button onClick={downloadReport} style={s.btn(true)}>Export Report</button>
