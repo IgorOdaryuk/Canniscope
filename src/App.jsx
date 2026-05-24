@@ -381,7 +381,7 @@ function analyzePages(pagesData) {
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
       const label = `${serviceName} — ${geoName}`;
 
-      const { risk, score, reasons, confidence, confidenceLabel } = computeSeverity(sorted, sections);
+      let { risk, score, reasons, confidence, confidenceLabel } = computeSeverity(sorted, sections);
 
       // ── INTENTIONAL ARCHITECTURE DETECTION ──
       const isLikelyArchitecture =
@@ -390,6 +390,12 @@ function analyzePages(pagesData) {
         sections.includes("ROOT") &&
         (sections.includes("SERVICE-AREA") || sections.includes("LOCATIONS")) &&
         (getSection(winner.url) === "ROOT" || sections.some(s => s === "SERVICE-AREA" || s === "LOCATIONS"));
+
+      // Architecture overlap → cap confidence, never "High confidence duplicate"
+      if (isLikelyArchitecture && confidence === "HIGH") {
+        confidence = "MEDIUM";
+        confidenceLabel = "Likely duplicate";
+      }
 
       const winnerPath = getPathname(winner.url);
 
