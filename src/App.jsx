@@ -232,10 +232,12 @@ function findTrailingSlashDupes(pagesData) {
     const pageActions = sorted.map((p, i) => ({
       ...p,
       section: getSection(p.url),
-      action: i === 0
-        ? "KEEP — canonical URL"
-        : "Technical fix: set server redirect or canonical tag",
+      action: i === 0 ? "KEEP" : "REDIRECT",
     }));
+
+    const splitPct = totalImpressions > 0
+      ? Math.round(((totalImpressions - winner.impressions) / totalImpressions) * 100)
+      : 0;
 
     dupes.push({
       label,
@@ -247,12 +249,20 @@ function findTrailingSlashDupes(pagesData) {
       totalImpressions,
       sections: [...new Set(pageActions.map(p => p.section))],
       winner,
+      loser: sorted[1] || null,
+      actionType: "REDIRECT",
+      suggestedAction: "301 redirect or rel=canonical to the slash-normalized URL (server config)",
+      recShort: "Same content, different URL format",
+      recLong: `Technical duplicate: ${winnerPath} exists with and without a trailing slash. Fix in server config (301) or set rel=canonical. Not an SEO intent conflict.`,
+      splitPct,
+      splitStrength: "Technical duplicate",
+      splitEmoji: "⚙️",
+      impact: "Low",
+      impactReason: "Trailing-slash duplicate — minor technical cleanup",
+      positionConflict: false,
       risk: "LOW",
       score: 10,
       reasons: ["Trailing slash duplicate — same content, different URL format"],
-      recommendation:
-        `Technical duplicate: ${winnerPath} exists with and without trailing slash. ` +
-        `Fix in server config (301 redirect) or set rel=canonical. Not an SEO intent conflict.`,
       isTechnical: true,
     });
   });
@@ -370,7 +380,6 @@ function analyzePages(pagesData) {
       const sorted = [...ps].sort(
         (a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.position - b.position
       );
-      const winner = sorted[0];
       const totalClicks = sorted.reduce((s, p) => s + p.clicks, 0);
       const totalImpressions = sorted.reduce((s, p) => s + p.impressions, 0);
       const sections = [...new Set(sorted.map(p => p.section))];
@@ -383,92 +392,133 @@ function analyzePages(pagesData) {
 
       let { risk, score, reasons, confidence, confidenceLabel } = computeSeverity(sorted, sections);
 
+      // ── HYBRID PRIMARY SELECTION ──
+      // Don't pick "winner" on clicks alone — a page ranking far higher should be primary
+      // even with fewer clicks (Google may still be mid-reindex). Position only overrides
+      // when BOTH pages have enough impressions to trust the position, and the gap is real.
+      const TRUST_IMPR = 100;   // min impressions to trust a position figure
+      const POS_GAP = 2;        // ranking gap (in positions) considered meaningful
+
+      const byClicks = [...sorted].sort(
+        (a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.position - b.position
+      );
+      const trafficLeader = byClicks[0];
+
+      // Best-ranked page among those with trustworthy impressions
+      const ranked = sorted.filter(p => p.impressions >= TRUST_IMPR && p.position > 0);
+      const rankLeader = ranked.length
+        ? [...ranked].sort((a, b) => a.position - b.position)[0]
+        : null;
+
+      let primary = trafficLeader;
+      let positionConflict = false;
+      if (rankLeader && rankLeader.url !== trafficLeader.url) {
+        const gap = trafficLeader.position - rankLeader.position; // >0 means rankLeader is higher
+        if (gap >= POS_GAP) {
+          // A different page ranks meaningfully higher — flag the conflict.
+          positionConflict = true;
+          // Primary stays the traffic leader, but we no longer recommend a blind redirect.
+        }
+      }
+
+      const secondaries = sorted.filter(p => p.url !== primary.url);
+      const secondary = secondaries.length
+        ? [...secondaries].sort((a, b) => b.clicks - a.clicks || b.impressions - a.impressions)[0]
+        : null;
+      const primaryPath = getPathname(primary.url);
+
       // ── INTENTIONAL ARCHITECTURE DETECTION ──
       const isLikelyArchitecture =
         geo !== "generic" &&
         sections.length >= 2 &&
         sections.includes("ROOT") &&
-        (sections.includes("SERVICE-AREA") || sections.includes("LOCATIONS")) &&
-        (getSection(winner.url) === "ROOT" || sections.some(s => s === "SERVICE-AREA" || s === "LOCATIONS"));
+        (sections.includes("SERVICE-AREA") || sections.includes("LOCATIONS"));
 
-      // Architecture overlap → cap confidence, never "High confidence duplicate"
       if (isLikelyArchitecture && confidence === "HIGH") {
         confidence = "MEDIUM";
         confidenceLabel = "Likely duplicate";
       }
 
-      const winnerPath = getPathname(winner.url);
+      // ── TRAFFIC SPLIT (honest metric) — share NOT going to primary ──
+      const splitPct = totalImpressions > 0
+        ? Math.round(((totalImpressions - primary.impressions) / totalImpressions) * 100)
+        : 0;
+      let splitStrength, splitEmoji;
+      if (splitPct >= 30) { splitStrength = "Strong cannibalization"; splitEmoji = "🔥"; }
+      else if (splitPct >= 10) { splitStrength = "Moderate cannibalization"; splitEmoji = "🟡"; }
+      else { splitStrength = "Weak cannibalization"; splitEmoji = "🟢"; }
+      reasons.push(`Traffic split ${splitPct}% (secondary URLs vs primary impressions)`);
 
-      let recommendation;
-      if (isLikelyArchitecture) {
-        recommendation =
-          `Likely intentional multi-location architecture. ` +
-          `${winnerPath} (ROOT) and geo landing pages in ${sections.filter(s => s !== "ROOT").join(" + ")} ` +
-          `often serve different purposes in local SEO. Review manually — ` +
-          `if both pages have unique content and different user intents, no action needed.`;
-        reasons.push("⚠ Possibly intentional architecture (ROOT + geo section)");
-      } else if (confidence === "HIGH" && sections.length >= 2) {
-        recommendation =
-          `High confidence: ${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ` +
-          `Winner by GSC data: ${winnerPath}. Likely safe to consolidate — ` +
-          `verify content overlap before redirecting.`;
-      } else if (sections.length >= 2) {
-        recommendation =
-          `Possible duplicate target across ${sections.join(" + ")}. ` +
-          `Winner by GSC data: ${winnerPath}. Review whether pages serve ` +
-          `different intents before consolidating.`;
+      // ── EXPECTED IMPACT (derived from real traffic at stake) ──
+      let impact, impactReason;
+      if (splitPct >= 30) { impact = "High"; impactReason = `Traffic split ${splitPct}% — real traffic divided across URLs`; }
+      else if (splitPct >= 10) { impact = "Medium"; impactReason = `Secondary URLs hold ${splitPct}% of impressions`; }
+      else { impact = "Low"; impactReason = `Secondary URLs receive only ${splitPct}% of impressions`; }
+
+      const secondaryDead = secondary &&
+        secondaries.every(p => p.clicks === 0 && p.impressions <= 10 && p.position > 30);
+
+      // ── ACTION: KEEP / REDIRECT / MERGE / REVIEW / ARCHITECTURE / IGNORE ──
+      let actionType, suggestedAction, recShort, recLong;
+      if (!secondary) {
+        actionType = "REVIEW"; suggestedAction = "Review — single URL cluster";
+      } else if (positionConflict) {
+        // Lower-traffic URL ranks higher. We know the mismatch, not the cause.
+        actionType = "ARCHITECTURE";
+        const higher = primary.position <= secondary.position ? primary : secondary;
+        const higherPath = getPathname(higher.url);
+        suggestedAction = "Rank/traffic mismatch detected — review before redirecting";
+        recShort = "A lower-traffic URL ranks higher — don't redirect blindly";
+        recLong = `These URLs target the same service+geo, but the page with MORE traffic isn't the one ranking higher. ${primaryPath} pulls most impressions, yet ${higherPath} ranks better (pos ${higher.position.toFixed(1)}). This often happens during an architecture transition while Google re-evaluates — but it can also be two genuinely different pages. Decide which URL should be canonical based on site architecture, internal links, backlinks, and business intent — not on current traffic alone. Then 301 the other one to it and let it settle. Do not 301 the better-ranking page away by default.`;
+        reasons.push("⚠ Rank/traffic mismatch — structural conflict, not clean cannibalization");
+      } else if (secondaryDead) {
+        actionType = "IGNORE";
+        suggestedAction = "Low urgency — secondary URLs already de-prioritized by Google";
+        recShort = "Google already ignores the secondary URLs";
+        recLong = `The secondary URL(s) have ~0 clicks, minimal impressions and rank past position 30. Google has effectively dropped them. Safe to 301 for cleanliness, but no traffic at stake — low priority.`;
+      } else if (isLikelyArchitecture) {
+        actionType = "ARCHITECTURE";
+        suggestedAction = "Structural overlap — verify intent before consolidating";
+        recShort = "Core page + geo section targeting the same term";
+        recLong = `${primaryPath} (Core page) and the geo landing pages in ${sections.filter(s => s !== "ROOT").join(" + ")} often serve different purposes in local SEO. If both have unique content and different user intent, no action needed. If they're near-duplicates, consolidate to the stronger one.`;
+        reasons.push("⚠ Core + geo section targeting the same term");
+      } else if (confidence === "HIGH" && splitPct >= 25) {
+        actionType = "MERGE";
+        suggestedAction = "Merge content into primary, then 301 secondary → primary";
+        recShort = "Both URLs pull real traffic for the same target";
+        recLong = `${sorted.length} pages target the same service+geo across ${sections.join(" + ")} and the secondary carries ${splitPct}% of cluster impressions — real traffic, not noise. Merge the unique content into ${primaryPath}, then 301 the secondary so you keep the equity instead of dropping it.`;
       } else if (confidence === "HIGH") {
-        recommendation =
-          `${sorted.length} URL variants with the same target in ${sections[0]}. ` +
-          `Winner by GSC data: ${winnerPath}. ` +
-          `Likely safe to consolidate with 301 or canonical.`;
+        actionType = "REDIRECT";
+        suggestedAction = "301 redirect secondary → primary";
+        recShort = "High confidence duplicate, primary clearly stronger";
+        recLong = `${sorted.length} pages target the same service+geo across ${sections.join(" + ")}. ${primaryPath} is stronger on both traffic and ranking, and the secondary pulls only ${splitPct}% of impressions. Likely safe to 301 — verify content overlap first.`;
       } else {
-        recommendation =
-          `${sorted.length} URL variants with similar targets in ${sections[0]}. ` +
-          `Winner by GSC data: ${winnerPath}. ` +
-          `Review manually — may be duplicate or intentional variation.`;
+        actionType = "REVIEW";
+        suggestedAction = "Review manually — verify intent before consolidating";
+        recShort = "Possible overlap — needs a human check";
+        recLong = `${sorted.length} URL variants with similar targets across ${sections.join(" + ")}. Primary by GSC data: ${primaryPath}. Confidence is ${confidence} — review whether these serve different intents before any redirect.`;
       }
+      const recommendation = recLong || suggestedAction;
 
-      const pageActions = sorted.map((p, i) => {
-        if (i === 0) return { ...p, action: "KEEP — winner by GSC data" };
-
-        // De-prioritized: 0 clicks, tiny impressions, bad position → Google already ignoring it
-        const isDePrioritized =
-          p.clicks === 0 &&
-          p.impressions <= 10 &&
-          p.position > 30;
-        if (isDePrioritized) {
-          return { ...p, action: "Likely already de-prioritized by Google — low urgency" };
-        }
-
-        if (isLikelyArchitecture && p.section !== winner.section) {
-          return { ...p, action: "Review — may be intentional geo architecture" };
-        }
-
-        // Only say "likely safe to redirect" with high confidence
-        if (confidence === "HIGH") {
-          if (p.clicks === 0 && p.impressions < winner.impressions * 0.3) {
-            return { ...p, action: "Likely safe to 301 redirect to winner" };
-          }
-          if (p.section !== winner.section) {
-            return { ...p, action: "Check if 301/canonical exists → likely safe to consolidate" };
-          }
-          return { ...p, action: "Likely safe to 301 redirect (same section duplicate)" };
-        }
-
-        // Medium/low confidence → always review
-        if (p.section !== winner.section) {
-          return { ...p, action: "Review — possible duplicate across sections" };
-        }
-        return { ...p, action: "Review — possible same-section duplicate" };
+      const pageActions = sorted.map((p) => {
+        if (p.url === primary.url) return { ...p, action: "KEEP" };
+        const isDePrioritized = p.clicks === 0 && p.impressions <= 10 && p.position > 30;
+        if (isDePrioritized) return { ...p, action: "IGNORE" };
+        if (actionType === "ARCHITECTURE") return { ...p, action: "ARCHITECTURE" };
+        if (actionType === "MERGE") return { ...p, action: "MERGE" };
+        if (actionType === "REDIRECT") return { ...p, action: "REDIRECT" };
+        return { ...p, action: "REVIEW" };
       });
 
       sorted.forEach(p => seoConflictURLs.add(p.url));
 
       return {
         label, service, geo, pages: pageActions, pageCount: sorted.length,
-        totalClicks, totalImpressions, sections, winner, risk, score, reasons, recommendation,
+        totalClicks, totalImpressions, sections, winner: primary, risk, score, reasons, recommendation,
         confidence, confidenceLabel, isLikelyArchitecture,
+        loser: secondary, actionType, suggestedAction, recShort, recLong,
+        splitPct, splitStrength, splitEmoji,
+        impact, impactReason, positionConflict,
         isTechnical: false,
       };
     })
@@ -520,14 +570,20 @@ function generateReportText(conflicts) {
     r += `=== ${sec.label} ===\n\n`;
     items.forEach((c, idx) => {
       r += `#${idx + 1}: ${c.label}\n`;
-      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · ${c.confidenceLabel || "—"}\n\n`;
+      r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · ${c.confidenceLabel || "—"}\n`;
+      r += `Traffic split: ${c.splitPct}% (${c.splitStrength}) · Expected impact: ${c.impact}\n`;
+      if (c.positionConflict) r += `!! RANK/TRAFFIC MISMATCH — lower-traffic URL ranks higher; review structure. Do not redirect blindly.\n`;
+      r += `\n>> ACTION: [${c.actionType}] ${c.suggestedAction}\n`;
+      if (c.winner) r += `   Primary:   ${getPathname(c.winner.url)}\n`;
+      if (c.loser)  r += `   Secondary: ${getPathname(c.loser.url)}\n\n`;
       r += `Why flagged:\n`;
       c.reasons.forEach(reason => { r += `  • ${reason}\n`; });
-      r += `\n${c.recommendation}\n\n`;
+      if (c.recLong) r += `\n${c.recLong}\n\n`; else r += `\n`;
       r += `Pages:\n`;
-      c.pages.forEach((p, pi) => {
+      c.pages.forEach((p) => {
         const path = getPathname(p.url);
-        r += `  ${pi === 0 ? "👑" : "  "} ${path}\n`;
+        const mark = p.action === "KEEP" ? "★" : " ";
+        r += `  ${mark} ${path}\n`;
         r += `     Clicks: ${p.clicks} | Impr: ${p.impressions.toLocaleString()} | CTR: ${p.ctr}% | Pos: ${p.position.toFixed(1)} | ${p.section}\n`;
         r += `     → ${p.action}\n`;
       });
@@ -544,17 +600,19 @@ function generateReportText(conflicts) {
 // ─── CSV EXPORT ───
 
 function generateCSV(conflicts) {
-  const rows = [["Cluster","Type","Risk","Confidence","Score","Service","Geo","Sections","URL","Clicks","Impressions","CTR","Position","Section","Action","Why Flagged"]];
+  const rows = [["Cluster","Type","Risk","Confidence","Score","Action","Suggested Action","Primary URL","Secondary URL","Traffic Split %","Strength","Expected Impact","Migration Flag","Sections","URLs in cluster","Total Clicks","Total Impressions","Why Flagged"]];
   conflicts.forEach(c => {
-    const whyFlagged = c.reasons.join("; ");
     const type = c.isTechnical ? "Technical" : c.isLikelyArchitecture ? "Architecture" : "SEO";
-    c.pages.forEach(p => {
-      rows.push([
-        c.label, type, c.risk, c.confidence || "—", c.score, c.service, c.geo || "generic",
-        c.sections.join(" + "), p.url, p.clicks, p.impressions,
-        p.ctr + "%", p.position.toFixed(1), p.section, p.action, whyFlagged,
-      ]);
-    });
+    rows.push([
+      c.label, type, c.risk, c.confidence || "—", c.score,
+      c.actionType, c.suggestedAction,
+      c.winner ? c.winner.url : "—",
+      c.loser ? c.loser.url : "—",
+      c.splitPct, c.splitStrength, c.impact,
+      c.positionConflict ? "RANK/TRAFFIC MISMATCH" : "",
+      c.sections.join(" + "), c.pageCount, c.totalClicks, c.totalImpressions,
+      c.reasons.join("; "),
+    ]);
   });
   return rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");
 }
@@ -638,16 +696,28 @@ function StatCard({ value, label, color }) {
   );
 }
 
+const ACTION_COLORS = {
+  KEEP:         { bg: C.lowBg,    color: C.low,           border: C.lowBorder },
+  REDIRECT:     { bg: C.highBg,   color: C.high,          border: C.highBorder },
+  MERGE:        { bg: "#fff7ed",  color: "#ea580c",       border: "#fed7aa" },
+  REVIEW:       { bg: C.medBg,    color: C.medium,        border: C.medBorder },
+  ARCHITECTURE: { bg: C.techBg,   color: C.tech,          border: C.techBorder },
+  IGNORE:       { bg: "#f9fafb",  color: C.textTertiary,  border: C.borderLight },
+};
+
+// Business-friendly labels for agency owners (the counter & section headers use these)
+const ACTION_LABELS = {
+  REDIRECT:     "Ready to Fix",
+  MERGE:        "Merge & Consolidate",
+  REVIEW:       "Manual Review",
+  ARCHITECTURE: "Architecture Conflicts",
+  IGNORE:       "Low Priority",
+};
+
 function ActionBadge({ action }) {
-  let bg, color, borderColor;
-  if (action.startsWith("KEEP")) { bg = C.lowBg; color = C.low; borderColor = C.lowBorder; }
-  else if (action.startsWith("Likely safe")) { bg = C.highBg; color = C.high; borderColor = C.highBorder; }
-  else if (action.startsWith("Technical")) { bg = C.techBg; color = C.tech; borderColor = C.techBorder; }
-  else if (action.startsWith("Review")) { bg = C.medBg; color = C.medium; borderColor = C.medBorder; }
-  else if (action.startsWith("Likely already")) { bg = "#f9fafb"; color = C.textTertiary; borderColor = C.borderLight; }
-  else { bg = "#f9fafb"; color = C.textSecondary; borderColor = C.border; }
+  const a = ACTION_COLORS[action] || ACTION_COLORS.REVIEW;
   return (
-    <span style={{ fontSize: 11, padding: "2px 8px", background: bg, color, border: `1px solid ${borderColor}`, borderRadius: 4, fontWeight: 500 }}>
+    <span style={{ fontSize: 10, padding: "2px 8px", background: a.bg, color: a.color, border: `1px solid ${a.border}`, borderRadius: 4, fontWeight: 700, fontFamily: mono, letterSpacing: "0.03em" }}>
       {action}
     </span>
   );
@@ -725,6 +795,82 @@ function SectionTree({ conflicts }) {
   );
 }
 
+function DecisionBlock({ conflict: c }) {
+  const [showWhy, setShowWhy] = useState(false);
+  const a = ACTION_COLORS[c.actionType] || ACTION_COLORS.REVIEW;
+  const primaryPath = getPathname(c.winner.url);
+  const secondaryPath = c.loser ? getPathname(c.loser.url) : null;
+  const impactColor = c.impact === "High" ? C.high : c.impact === "Medium" ? C.medium : C.low;
+
+  return (
+    <div style={{ margin: "12px 16px 10px", border: `1px solid ${a.border}`, borderRadius: 8, overflow: "hidden" }}>
+      {c.positionConflict && (
+        <div style={{ padding: "7px 14px", background: C.medBg, borderBottom: `1px solid ${C.medBorder}`, fontSize: 11.5, color: C.medium, fontWeight: 600 }}>
+          ⚠️ Rank/traffic mismatch — a lower-traffic URL ranks higher. Review structure before redirecting; do not redirect blindly.
+        </div>
+      )}
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "8px 14px", background: a.bg, borderBottom: `1px solid ${a.border}`, flexWrap: "wrap" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, fontFamily: mono, letterSpacing: "0.04em", padding: "3px 8px", borderRadius: 4, background: a.color, color: "#fff" }}>{c.actionType}</span>
+        <span style={{ fontSize: 12, color: a.color, fontWeight: 500, flex: 1, minWidth: 160 }}>{c.suggestedAction}</span>
+        {c.recLong && (
+          <button onClick={() => setShowWhy(v => !v)} style={{ fontSize: 11, fontWeight: 600, color: a.color, background: "transparent", border: `1px solid ${a.border}`, borderRadius: 4, padding: "2px 8px", cursor: "pointer", fontFamily: sans }}>
+            {showWhy ? "Hide" : "Why?"}
+          </button>
+        )}
+      </div>
+
+      {showWhy && c.recLong && (
+        <div style={{ padding: "10px 14px", background: "#fcfcfd", borderBottom: `1px solid ${C.borderLight}`, fontSize: 12.5, color: C.textSecondary, lineHeight: 1.6 }}>
+          {c.recLong}
+        </div>
+      )}
+
+      <div style={{ padding: "10px 14px", background: C.surface }}>
+        <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "6px 12px", alignItems: "baseline" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, color: C.low, textTransform: "uppercase", letterSpacing: "0.05em" }}>Primary</span>
+          <span style={{ fontFamily: mono, fontSize: 12, color: C.text, fontWeight: 600, wordBreak: "break-all" }}>
+            {primaryPath} <span style={{ color: C.textTertiary, fontWeight: 400 }}>· {c.winner.clicks} clicks · {c.winner.impressions.toLocaleString()} impr · pos {c.winner.position.toFixed(1)}</span>
+          </span>
+          {secondaryPath && (
+            <>
+              <span style={{ fontSize: 10, fontWeight: 700, color: C.high, textTransform: "uppercase", letterSpacing: "0.05em" }}>Secondary</span>
+              <span style={{ fontFamily: mono, fontSize: 12, color: C.text, wordBreak: "break-all" }}>
+                {secondaryPath} <span style={{ color: C.textTertiary }}>· {c.loser.clicks} clicks · {c.loser.impressions.toLocaleString()} impr · pos {c.loser.position.toFixed(1)}</span>
+              </span>
+            </>
+          )}
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginTop: 12, paddingTop: 12, borderTop: `1px solid ${C.borderLight}`, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 22 }}>{c.splitEmoji}</span>
+          <div style={{ display: "flex", flexDirection: "column", minWidth: 120 }}>
+            <span style={{ fontSize: 22, fontWeight: 700, color: C.text, letterSpacing: "-0.02em", lineHeight: 1.1 }}>
+              {c.splitPct}% <span style={{ fontSize: 12, fontWeight: 500, color: C.textTertiary }}>traffic split</span>
+            </span>
+            <span style={{ fontSize: 11, color: C.textSecondary, marginTop: 2 }}>{c.splitStrength}</span>
+          </div>
+          <div style={{ flex: 1, height: 6, background: C.borderLight, borderRadius: 3, overflow: "hidden", minWidth: 80, maxWidth: 180 }}>
+            <div style={{ height: "100%", width: `${Math.min(c.splitPct, 100)}%`, background: c.splitPct >= 30 ? C.high : c.splitPct >= 10 ? C.medium : C.low, borderRadius: 3 }} />
+          </div>
+          <span style={{ marginLeft: "auto", display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12, padding: "4px 11px", borderRadius: 6, background: impactColor + "12", color: impactColor, border: `1px solid ${impactColor}30`, fontWeight: 700 }}>
+            Impact: {c.impact}
+          </span>
+        </div>
+        {c.impactReason && (
+          <div style={{ fontSize: 11, color: C.textTertiary, marginTop: 6 }}>{c.impactReason}</div>
+        )}
+
+        {c.pageCount > 2 && (
+          <div style={{ fontSize: 11, color: C.textTertiary, marginTop: 8 }}>
+            +{c.pageCount - 2} more URL{c.pageCount - 2 > 1 ? "s" : ""} in this cluster — see table below
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ConflictCard({ conflict: c }) {
   const [open, setOpen] = useState(false);
   const rs = c.isTechnical ? RISK_STYLE.TECH : RISK_STYLE[c.risk] || RISK_STYLE.LOW;
@@ -737,7 +883,10 @@ function ConflictCard({ conflict: c }) {
         <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 3, background: rs.bg, color: rs.color, border: `1px solid ${rs.border}` }}>{rs.label}</span>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 14, fontWeight: 500, color: C.text }}>
-            {c.isLikelyArchitecture && <span style={{ fontSize: 10, fontWeight: 600, padding: "1px 5px", borderRadius: 3, background: C.techBg, color: C.tech, border: `1px solid ${C.techBorder}`, marginRight: 6 }}>architecture</span>}
+            {!c.isTechnical && (() => {
+              const ac = ACTION_COLORS[c.actionType] || ACTION_COLORS.REVIEW;
+              return <span style={{ fontSize: 9, fontWeight: 700, fontFamily: mono, padding: "1px 6px", borderRadius: 3, background: ac.bg, color: ac.color, border: `1px solid ${ac.border}`, marginRight: 6, letterSpacing: "0.03em" }}>{c.actionType}</span>;
+            })()}
             {c.label}
           </div>
           <div style={{ fontSize: 12, color: C.textTertiary, marginTop: 2 }}>
@@ -756,10 +905,8 @@ function ConflictCard({ conflict: c }) {
       </div>
       {open && (
         <div style={{ borderTop: `1px solid ${C.borderLight}` }}>
+          <DecisionBlock conflict={c} />
           <WhyFlagged reasons={c.reasons} />
-          <div style={{ margin: "0 16px 10px", padding: "10px 14px", background: rs.bg, borderLeft: `3px solid ${rs.color}`, borderRadius: "0 6px 6px 0", fontSize: 13, color: C.textSecondary, lineHeight: 1.6 }}>
-            {c.recommendation}
-          </div>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.borderLight}` }}>
@@ -771,17 +918,20 @@ function ConflictCard({ conflict: c }) {
               </tr>
             </thead>
             <tbody>
-              {c.pages.map((p, pi) => (
-                <tr key={pi} style={{ borderBottom: `1px solid ${C.borderLight}`, background: pi === 0 ? C.lowBg : "transparent" }}>
-                  <td style={{ padding: "8px 16px", fontFamily: mono, fontSize: 12, color: pi === 0 ? C.low : C.text, fontWeight: pi === 0 ? 600 : 400, wordBreak: "break-all", maxWidth: 300 }}>
-                    {pi === 0 && "👑 "}{getPathname(p.url)}
+              {c.pages.map((p, pi) => {
+                const isPrimary = p.action === "KEEP";
+                return (
+                <tr key={pi} style={{ borderBottom: `1px solid ${C.borderLight}`, background: isPrimary ? C.lowBg : "transparent" }}>
+                  <td style={{ padding: "8px 16px", fontFamily: mono, fontSize: 12, color: isPrimary ? C.low : C.text, fontWeight: isPrimary ? 600 : 400, wordBreak: "break-all", maxWidth: 300 }}>
+                    {isPrimary && "★ "}{getPathname(p.url)}
                   </td>
                   <td style={{ padding: "8px", textAlign: "right", fontWeight: 600, fontFamily: mono }}>{p.clicks}</td>
                   <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.impressions.toLocaleString()}</td>
                   <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.position.toFixed(1)}</td>
                   <td style={{ padding: "8px 16px" }}><ActionBadge action={p.action} /></td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -877,6 +1027,12 @@ export default function CanniScope() {
   const low = seo.filter(c => c.risk === "LOW").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
 
+  const actionCounts = conflicts.reduce((acc, c) => {
+    acc[c.actionType] = (acc[c.actionType] || 0) + 1;
+    return acc;
+  }, {});
+  const actionOrder = ["REDIRECT", "MERGE", "REVIEW", "ARCHITECTURE", "IGNORE"];
+
   const filterFn = (c) => confFilter === "all" ? true : confFilter === "HIGH" ? c.confidence === "HIGH" : (c.confidence === "HIGH" || c.confidence === "MEDIUM");
   const filteredSeo = seo.filter(filterFn);
   const fHigh = filteredSeo.filter(c => c.risk === "HIGH");
@@ -915,6 +1071,18 @@ export default function CanniScope() {
           <StatCard value={high} label="High risk" color={C.high} />
           <StatCard value={medium} label="Medium risk" color={C.medium} />
           <StatCard value={tech.length} label="Technical" color={C.tech} />
+        </div>
+
+        <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "stretch" }}>
+          {actionOrder.filter(t => actionCounts[t]).map(t => {
+            const a = ACTION_COLORS[t];
+            return (
+              <span key={t} style={{ display: "inline-flex", flexDirection: "column", gap: 2, padding: "8px 14px", borderRadius: 8, background: a.bg, border: `1px solid ${a.border}`, minWidth: 96 }}>
+                <span style={{ fontSize: 20, fontWeight: 700, color: a.color, lineHeight: 1, letterSpacing: "-0.02em" }}>{actionCounts[t]}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: a.color }}>{ACTION_LABELS[t]}</span>
+              </span>
+            );
+          })}
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
