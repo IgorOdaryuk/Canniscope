@@ -6,6 +6,8 @@ Drop in your Google Search Console `Pages.csv` export and CanniScope surfaces wh
 
 👉 **Live app: [canniscope.vercel.app](https://canniscope.vercel.app)** — no signup, completely free.
 
+![CanniScope results — cannibalization clusters ranked by risk, with primary/secondary URLs, GSC data, and a recommended action](docs/canniscope-results.jpg)
+
 ---
 
 ## Why it exists
@@ -29,6 +31,8 @@ CanniScope is a **100% client-side** app. Your `Pages.csv` is parsed in-browser 
 - **Export** the full report or a CSV, or copy to clipboard.
 
 ## How to use
+
+![CanniScope upload screen — drop your Google Search Console Pages.csv export to start](docs/canniscope-upload.jpg)
 
 1. In **Google Search Console → Performance → Pages**, set your date range and **Export → CSV**.
 2. Open **[canniscope.vercel.app](https://canniscope.vercel.app)**.
