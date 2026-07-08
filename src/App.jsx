@@ -1149,8 +1149,15 @@ export default function CanniScope() {
           </div>
         )}
 
-        <div style={{ textAlign: "center", padding: "24px 0 8px", fontSize: 11, color: C.textTertiary }}>
-          CanniScope · Experimental Beta
+        <div style={{ textAlign: "center", padding: "24px 0 8px", fontSize: 11, color: C.textTertiary, lineHeight: 1.8 }}>
+          <div>CanniScope · Experimental Beta · Free &amp; open source</div>
+          <div>
+            Built by{" "}
+            <a href="https://odariuk.com" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Igor Odariuk</a>
+            {" · "}
+            Need help fixing cannibalization?{" "}
+            <a href="https://odariuk.com" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Get in touch</a>
+          </div>
         </div>
       </div>
     </div>
