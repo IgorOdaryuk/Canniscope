@@ -48,6 +48,16 @@ const INFORMATIONAL_TOKENS = new Set([
   "blog","news","press","media","testimonials","portfolio","gallery",
 ]);
 
+// Locale prefixes for multilingual sites (/blog/ja/slug, /de/slug …).
+// Same slug in different languages = hreflang variants, NOT cannibalization.
+// Allowlist of real language codes only — so short slugs like "ai"/"os"/"vs" are never mistaken for a locale.
+const LOCALE_CODES = new Set([
+  "en","de","ja","fr","zh","zh-cn","zh-hant","ko","es","it","pl","pt","pt-br",
+  "sv","nl","tr","th","id","fi","da","cs","ar","ro","hu","el","uk","ua","ru",
+  "nn","no","nb","vi","vn","he","il","sk","bg","hr","sr","sl","lt","lv","et",
+  "fa","hi","ms","ca","gl","eu","is","ga","mt","sq","mk","az","ka","hy","kk",
+]);
+
 // Safe state abbreviations for trailing stripping.
 // Excluded: common English words (in, me, or, hi, al, de, la, ma, pa, id, oh, ok)
 const SAFE_STATES = new Set([
@@ -105,6 +115,15 @@ function classifyURL(url) {
     if (["service-area","locations","services","category","blog"].includes(parts[0])) {
       parts.shift();
     }
+
+    // ── LOCALE PREFIX (multilingual sites) ──
+    // e.g. /blog/ja/mac-disk-repair-software → locale "ja". Keep it so language
+    // variants of the SAME slug are never grouped as cannibalization (hreflang pairs).
+    let locale = "en";
+    if (parts.length > 1 && LOCALE_CODES.has(parts[0])) {
+      locale = parts.shift();
+    }
+
     if (section === "LOCATIONS" && parts.length > 1) {
       parts.shift();
     }
@@ -181,7 +200,7 @@ function classifyURL(url) {
     const geo = geoRaw ? geoRaw.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-") : null;
     if (!cleanService || cleanService.length < 3) return null;
 
-    return { service: cleanService, geo, section, intent: "service", slug };
+    return { service: cleanService, geo, section, intent: "service", slug, locale };
   } catch {
     return null;
   }
@@ -363,7 +382,9 @@ function analyzePages(pagesData) {
 
   const groups = {};
   classified.forEach(p => {
-    const key = `${p.service}|${p.geo || "generic"}`;
+    // Include locale in the key so same-slug pages in different languages
+    // (hreflang variants) are never merged into one cannibalization cluster.
+    const key = `${p.locale || "en"}|${p.service}|${p.geo || "generic"}`;
     if (!groups[key]) groups[key] = [];
     if (!groups[key].find(x => x.url === p.url)) {
       groups[key].push(p);
@@ -376,7 +397,7 @@ function analyzePages(pagesData) {
   const conflicts = Object.entries(groups)
     .filter(([_, ps]) => ps.length >= 2 && ps.length <= 5)
     .map(([key, ps]) => {
-      const [service, geo] = key.split("|");
+      const [locale, service, geo] = key.split("|");
       const sorted = [...ps].sort(
         (a, b) => b.clicks - a.clicks || b.impressions - a.impressions || a.position - b.position
       );
@@ -388,7 +409,7 @@ function analyzePages(pagesData) {
       const geoName = geo === "generic"
         ? "Generic"
         : geo.replace(/-/g, " ").replace(/\b\w/g, c => c.toUpperCase());
-      const label = `${serviceName} — ${geoName}`;
+      const label = `${serviceName} — ${geoName}${locale && locale !== "en" ? ` [${locale.toUpperCase()}]` : ""}`;
 
       let { risk, score, reasons, confidence, confidenceLabel } = computeSeverity(sorted, sections);
 
