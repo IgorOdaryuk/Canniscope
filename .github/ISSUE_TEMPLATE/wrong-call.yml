@@ -1,0 +1,39 @@
+name: Wrong call on a pair
+description: CanniScope flagged a pair that isn't a problem, or gave the wrong advice
+labels: ["wrong call"]
+body:
+  - type: markdown
+    attributes:
+      value: "Issues are public. Paths are enough; leave out anything you don't want to share."
+  - type: textarea
+    id: pair
+    attributes:
+      label: The pair
+      description: Paths of the flagged pages and the action CanniScope suggested
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why it's wrong
+      description: e.g. different cities, already redirected, different intent, wrong page kept
+    validations:
+      required: true
+  - type: dropdown
+    id: input
+    attributes:
+      label: What you scanned with
+      options:
+        - Pages.csv only
+        - Query + page CSV
+        - Sign in with Google
+        - The demo
+  - type: dropdown
+    id: site
+    attributes:
+      label: Site type
+      options:
+        - Local service (cities / service areas)
+        - Blog / content site
+        - E-commerce
+        - SaaS / other

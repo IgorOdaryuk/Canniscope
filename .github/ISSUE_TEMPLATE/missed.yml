@@ -1,0 +1,18 @@
+name: Missed conflict
+description: Two of your pages compete for the same searches and CanniScope didn't flag them
+labels: ["missed"]
+body:
+  - type: markdown
+    attributes:
+      value: "Issues are public. Paths and rough numbers are enough."
+  - type: textarea
+    id: pair
+    attributes:
+      label: The pages
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: What shows they compete
+      description: e.g. shared queries with impressions and positions for each page

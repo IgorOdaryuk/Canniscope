@@ -11,6 +11,18 @@ import { signIn, listSites, loadSite, revoke } from "./lib/gsc.js";
 
 // Public OAuth client ID (not a secret). Sign-in stays hidden until it is set.
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+const REPO = "https://github.com/IgorOdaryuk/Canniscope";
+
+// Prefilled "wrong call" issue: paths and the suggested action only, the reporter edits before posting.
+function reportUrl(c) {
+  const pair = c.pages.map(p => `${getPathname(p.url)} (${p.action})`).join("\n");
+  const q = new URLSearchParams({
+    template: "wrong-call.yml",
+    title: `Wrong call: ${c.isTechnical ? "technical" : c.actionType} — ${c.pages.map(p => getPathname(p.url)).join(" vs ")}`.slice(0, 200),
+    pair: `${pair}\nSuggested: ${c.suggestedAction}${c.live ? `\nLive check: ${c.live.verdict}` : ""}`,
+  });
+  return `${REPO}/issues/new?${q}`;
+}
 
 const LIVE_CHUNK = 25;  // URLs per request to /api/check
 const LIVE_MAX = 300;   // URLs per scan
@@ -329,6 +341,9 @@ function ConflictCard({ conflict: c }) {
       </div>
       {open && (
         <div style={{ borderTop: `1px solid ${C.borderLight}` }}>
+          <div style={{ margin: "10px 16px 0", textAlign: "right", fontSize: 11 }}>
+            <a href={reportUrl(c)} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Wrong call? Report it on GitHub</a>
+          </div>
           {c.live && <LiveVerdict live={c.live} />}
           <DecisionBlock conflict={c} />
           <WhyFlagged reasons={c.reasons} />
@@ -595,6 +610,11 @@ export default function CanniScope() {
               <b style={{ color: C.text }}>Query + page CSV</b> (recommended) — columns query, page, clicks, impressions, position. GSC's own export can't pair them; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.<br/>
               <b style={{ color: C.text }}>Redirect / 404 list</b> (optional) — not needed when the live check is on. Useful if your site blocks bots: GSC → Indexing → Pages → “Page with redirect” / “Not found (404)” → Export, or a Screaming Frog export with Status Code.
             </div>
+            <div style={{ marginTop: 16, fontSize: 12, color: C.textTertiary }}>
+              by <a href="https://odariuk.com" target="_blank" rel="noopener" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Igor Odariuk</a>
+              {" · "}<a href={REPO} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Open source on GitHub — issues and PRs welcome</a>
+              {" · "}<a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
+            </div>
           </div>
         </div>
       </div>
@@ -806,6 +826,8 @@ export default function CanniScope() {
             <a href="https://odariuk.com" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Get in touch</a>
             {" · "}
             <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
+            {" · "}
+            <a href={REPO} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Source &amp; feedback on GitHub</a>
           </div>
         </div>
       </div>
