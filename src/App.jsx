@@ -379,6 +379,8 @@ export default function CanniScope() {
       setLoading(false); return;
     }
 
+    const merged = (pagesFile ? pagesFile.mergedVariants : 0) + (queryFile ? queryFile.mergedVariants : 0);
+    if (merged > 0) notes.push(`${merged.toLocaleString()} URL variants with tracking tags or #anchors were counted as the same page (e.g. “/?utm_source=gbp” = “/”).`);
     const { dead, isDead } = buildDeadIndex(statusFiles);
     const brands = brandInput.split(",").map(b => b.trim()).filter(Boolean);
     const pageRows = pagesFile ? pagesFile.rows : pagesFromQueries(queryFile.rows);

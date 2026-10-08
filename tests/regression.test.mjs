@@ -157,5 +157,49 @@ test("query mode drops URLs on the redirect list", () => {
   assert.ok(!findCluster(res, "/refrigerator-repair-tampa-bay/", "/service-area/refrigerator-repair-in-tampa-fl/"));
 });
 
+test("tracking tags and #anchors count as the same page", () => {
+  const f = detectFile([
+    { "Top pages": S + "/", Clicks: "10", Impressions: "1000", CTR: "1%", Position: "10" },
+    { "Top pages": S + "/?utm_source=gbp&utm_medium=referral", Clicks: "5", Impressions: "250", CTR: "2%", Position: "4" },
+    { "Top pages": S + "/#about", Clicks: "0", Impressions: "8", CTR: "0%", Position: "11" },
+  ], ["Top pages", "Clicks", "Impressions", "CTR", "Position"]);
+  assert.equal(f.rows.length, 1);
+  assert.equal(f.rows[0].Impressions, 1258);
+  assert.equal(f.mergedVariants, 2);
+});
+
+const q2 = [
+  // a city hub and an office-cleaning page in another city, generic search: localized
+  q("office cleaning service", "/cleaning-service-san-marcos-tx/", 43, 9),
+  q("office cleaning service", "/services/office-cleaning-killeen-tx/", 11, 13),
+  q("commercial cleaning services", "/cleaning-service-san-marcos-tx/", 21, 15),
+  q("commercial cleaning services", "/services/office-cleaning-killeen-tx/", 15, 8),
+  // a city hub outranking that city's dedicated service page: real overlap
+  q("post construction cleaning austin", "/cleaning-service-austin-tx/", 17, 9),
+  q("post construction cleaning austin", "/services/post-construction-cleaning-austin-tx/", 27, 37),
+  q("construction site cleaning austin tx", "/cleaning-service-austin-tx/", 21, 8),
+  q("construction site cleaning austin tx", "/services/post-construction-cleaning-austin-tx/", 83, 52),
+  // two price posts sharing a long common prefix: not a template, real overlap
+  q("san antonio house cleaning prices", "/blog/house-cleaning-cost-san-antonio-austin.html", 13, 21),
+  q("san antonio house cleaning prices", "/blog/house-cleaning-prices-central-texas-2026.html", 37, 11),
+  q("how much to pay for house cleaning in san antonio", "/blog/house-cleaning-cost-san-antonio-austin.html", 16, 5),
+  q("how much to pay for house cleaning in san antonio", "/blog/house-cleaning-prices-central-texas-2026.html", 17, 3),
+];
+
+test("pages for different places on different URL templates are not paired on generic searches", () => {
+  const res = analyzeQueries(q2);
+  assert.ok(!findCluster(res, "/cleaning-service-san-marcos-tx/", "/services/office-cleaning-killeen-tx/"));
+});
+
+test("a city hub competing with its own city's service page is reported", () => {
+  const res = analyzeQueries(q2);
+  assert.ok(findCluster(res, "/cleaning-service-austin-tx/", "/services/post-construction-cleaning-austin-tx/"));
+});
+
+test("posts that only share a prefix are not treated as a URL template", () => {
+  const res = analyzeQueries(q2);
+  assert.ok(findCluster(res, "/blog/house-cleaning-cost-san-antonio-austin.html", "/blog/house-cleaning-prices-central-texas-2026.html"));
+});
+
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
 console.log("\nall passed");

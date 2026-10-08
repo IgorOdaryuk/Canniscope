@@ -25,6 +25,33 @@ const num = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Tracking parameters and #anchors don't make a different page. GSC reports
+// "/?utm_source=gbp" (the Business Profile link) and "/#about" as separate URLs.
+const TRACKING = /^(utm_|gclid$|gbraid$|wbraid$|fbclid$|msclkid$|srsltid$|mc_|_ga$|_gl$|ref$)/i;
+function normalizeUrl(url) {
+  try {
+    const u = new URL(String(url).trim());
+    u.hash = "";
+    [...u.searchParams.keys()].forEach(k => { if (TRACKING.test(k)) u.searchParams.delete(k); });
+    return u.toString();
+  } catch {
+    return String(url || "").trim();
+  }
+}
+
+// Merge rows that point to the same page after normalization: sum clicks and
+// impressions, average position weighted by impressions.
+function mergeRows(rows, keyOf) {
+  const m = new Map();
+  rows.forEach(r => {
+    const k = keyOf(r);
+    const x = m.get(k);
+    if (!x) { m.set(k, { ...r, _pw: r.position * r.impressions }); return; }
+    x.clicks += r.clicks; x.impressions += r.impressions; x._pw += r.position * r.impressions;
+  });
+  return [...m.values()].map(({ _pw, ...r }) => ({ ...r, position: r.impressions ? _pw / r.impressions : r.position }));
+}
+
 // Returns { kind, ... } for one parsed CSV.
 // kind: "pages" | "queries" | "status" | "meta" | "unknown"
 function detectFile(rows, fields) {
@@ -36,16 +63,15 @@ function detectFile(rows, fields) {
   if (q && p && im) {
     const c = findCol(headers, CLICK_COLS);
     const pos = findCol(headers, POS_COLS);
-    return {
-      kind: "queries",
-      rows: rows.map(r => ({
-        query: String(r[q] || "").trim(),
-        page: String(r[p] || "").trim(),
-        clicks: c ? num(r[c]) : 0,
-        impressions: num(r[im]),
-        position: pos ? num(r[pos]) : 0,
-      })).filter(r => r.query && r.page),
-    };
+    const raw = rows.map(r => ({
+      query: String(r[q] || "").trim(),
+      page: normalizeUrl(r[p]),
+      clicks: c ? num(r[c]) : 0,
+      impressions: num(r[im]),
+      position: pos ? num(r[pos]) : 0,
+    })).filter(r => r.query && r.page);
+    const merged = mergeRows(raw, r => r.query + "\n" + r.page);
+    return { kind: "queries", rows: merged, mergedVariants: raw.length - merged.length };
   }
 
   if (p && im && !q) {
@@ -53,15 +79,23 @@ function detectFile(rows, fields) {
     const c = findCol(headers, CLICK_COLS);
     const pos = findCol(headers, POS_COLS);
     const ctr = findCol(headers, ["ctr"]);
+    const raw = rows.map(r => ({
+      page: normalizeUrl(r[p]),
+      clicks: c ? num(r[c]) : 0,
+      impressions: num(r[im]),
+      position: pos ? num(r[pos]) : 0,
+    })).filter(r => r.page);
+    const merged = mergeRows(raw, r => r.page);
     return {
       kind: "pages",
-      rows: rows.map(r => ({
-        "Top pages": r[p],
-        Clicks: c ? r[c] : 0,
-        Impressions: r[im],
-        CTR: ctr ? r[ctr] : 0,
-        Position: pos ? r[pos] : 0,
+      rows: merged.map(r => ({
+        "Top pages": r.page,
+        Clicks: r.clicks,
+        Impressions: r.impressions,
+        CTR: r.impressions ? (100 * r.clicks / r.impressions).toFixed(2) + "%" : "0%",
+        Position: r.position.toFixed(1),
       })),
+      mergedVariants: raw.length - merged.length,
     };
   }
 
@@ -79,7 +113,7 @@ function detectFile(rows, fields) {
     return {
       kind: "status",
       rows: rows.map(r => ({
-        url: String(r[p] || "").trim(),
+        url: normalizeUrl(r[p]),
         status: st ? parseInt(r[st], 10) || null : null,
         target: tg ? String(r[tg] || "").trim() || null : null,
       })).filter(r => /^https?:\/\//i.test(r.url)),
@@ -110,4 +144,4 @@ function buildDeadIndex(statusFiles) {
   return { dead, isDead };
 }
 
-export { detectFile, buildDeadIndex, DEAD_ISSUE };
+export { detectFile, buildDeadIndex, normalizeUrl, DEAD_ISSUE };

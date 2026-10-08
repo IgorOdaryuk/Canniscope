@@ -6,8 +6,9 @@ import { getPathname, getSection } from "./analyze.js";
 
 const MIN_PAGE_IMPR = 3;      // a page must get at least this many impressions on the query
 const MIN_PAGE_SHARE = 0.05;  // ...and at least this share of the query's impressions
-const MIN_CONTESTED = 30;     // pair is reported when contested impressions reach this
+const MIN_CONTESTED = 20;     // pair is reported when contested impressions reach this
 const MIN_SHARED_QUERIES = 2; // ...across at least this many queries
+const MAX_SLOT = 3;           // URL template slot: at most this many words differ
 
 const STOP = new Set(["in", "the", "and", "for", "of", "a", "to", "near", "me", "my", "your", "with", "on", "at"]);
 // State codes say little: "tampa-fl" vs "tampa-bay" should still match on "tampa".
@@ -75,6 +76,17 @@ function analyzeQueries(rows, opts = {}) {
     return tokenize(parts[parts.length - 1] || "").filter(t => !STATES.has(t));
   };
   // Replace the words only this page has with a slot: "icemaker-repair-*".
+  // Place names, learned from the site's own URLs: the one or two words right
+  // before a state code ("-austin-tx", "-san-marcos-tx", "-in-atlanta-ga").
+  const geoWords = new Set();
+  pages.forEach(u => {
+    const parts = getPathname(u).split("/").filter(Boolean);
+    const w = tokenize(parts[parts.length - 1] || "");
+    w.forEach((t, i) => { if (STATES.has(t) && i > 0 && i === w.length - 1) { geoWords.add(w[i - 1]); if (i > 1) geoWords.add(w[i - 2] + " " + w[i - 1]); } });
+  });
+  // A page's own place: a geo word (or two-word place) in its slug.
+  const placeOf = (words) => words.filter((t, i) => geoWords.has(t) || (i > 0 && geoWords.has(words[i - 1] + " " + t)));
+
   const pattern = (u, own) => slugWords(u).map(t => (own.has(t) ? "*" : t)).join("-").replace(/(\*-)+\*/g, "*");
 
   const byQuery = new Map();
@@ -101,11 +113,16 @@ function analyzeQueries(rows, opts = {}) {
         const ownB = new Set([...idB].filter(t => !idA.has(t)));
         const restA = [...ownA].filter(t => !qt.has(t));
         const restB = [...ownB].filter(t => !qt.has(t));
-        // Same URL template with a different value in one slot ("icemaker-repair-dallas"
-        // vs "icemaker-repair-houston"), and the query names neither value: Google is
-        // localizing a generic search, not confused. Two posts about one product with
-        // different wording don't share a template, so they still count.
-        if (restA.length && restB.length && pattern(A.page, ownA) === pattern(B.page, ownB)) {
+        // Each page aims at its own value the query doesn't name: Google is localizing a
+        // generic search, not confused. "Its own value" = same URL template with a
+        // different slot ("icemaker-repair-dallas" vs "icemaker-repair-houston"), or
+        // a different place (a San Marcos hub vs a Killeen office-cleaning page).
+        // Two posts about one product with different wording pass neither test.
+        // A slot is a short value (a city, a model); if half the slug differs, it's not a template.
+        const sameTemplate = ownA.size <= MAX_SLOT && ownB.size <= MAX_SLOT &&
+          pattern(A.page, ownA) === pattern(B.page, ownB);
+        const differentPlaces = placeOf(restA).length > 0 && placeOf(restB).length > 0;
+        if (restA.length && restB.length && (sameTemplate || differentPlaces)) {
           stats.localizedSkips++;
           continue;
         }
