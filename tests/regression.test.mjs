@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { analyzePages } from "../src/lib/analyze.js";
 import { analyzeQueries } from "../src/lib/queries.js";
 import { detectFile, buildDeadIndex } from "../src/lib/files.js";
+import { judgeCluster } from "../src/lib/live.js";
 
 const S = "https://example.com";
 const page = (path, impressions = 100, clicks = 1, position = 10) =>
@@ -199,6 +200,43 @@ test("a city hub competing with its own city's service page is reported", () => 
 test("posts that only share a prefix are not treated as a URL template", () => {
   const res = analyzeQueries(q2);
   assert.ok(findCluster(res, "/blog/house-cleaning-cost-san-antonio-austin.html", "/blog/house-cleaning-prices-central-texas-2026.html"));
+});
+
+// ── live check verdicts ──
+
+const A = S + "/refrigerator-repair-tampa/", B = S + "/service-area/refrigerator-repair-in-tampa-fl/";
+const cl = { pages: [{ url: A, clicks: 3, impressions: 300 }, { url: B, clicks: 9, impressions: 600 }] };
+const ok = (url) => ({ url, status: 200, finalUrl: url, finalStatus: 200, hops: 0, canonical: url, noindex: false });
+const judge = (ra, rb) => judgeCluster(cl, new Map([[A, ra], [B, rb]]));
+
+test("both pages live and self-canonical → real problem", () => {
+  assert.equal(judge(ok(A), ok(B)).verdict, "real");
+});
+test("one page 301s to the other → already fixed", () => {
+  assert.equal(judge({ url: A, status: 301, finalUrl: B, finalStatus: 200, hops: 1 }, ok(B)).verdict, "fixed");
+});
+test("canonical to the other page → already fixed", () => {
+  assert.equal(judge({ ...ok(A), canonical: B }, ok(B)).verdict, "fixed");
+});
+test("noindex on one page → already fixed", () => {
+  assert.equal(judge({ ...ok(A), noindex: true }, ok(B)).verdict, "fixed");
+});
+test("404 on a page that had clicks → fixed with a mistake", () => {
+  const v = judge({ url: A, status: 404, finalUrl: A, finalStatus: 404, hops: 0 }, ok(B));
+  assert.equal(v.verdict, "broken");
+  assert.match(v.problems[0], /301/);
+});
+test("redirect chain → fixed with a mistake", () => {
+  assert.equal(judge({ url: A, status: 301, finalUrl: B, finalStatus: 200, hops: 3 }, ok(B)).verdict, "broken");
+});
+test("temporary 302 → fixed with a mistake", () => {
+  assert.equal(judge({ url: A, status: 302, finalUrl: B, finalStatus: 200, hops: 1 }, ok(B)).verdict, "broken");
+});
+test("check failed for one page → not checked, stays in the main list", () => {
+  assert.equal(judge({ url: A, error: "timeout" }, ok(B)).verdict, "unchecked");
+});
+test("trailing slash only differs in canonical → still self-canonical", () => {
+  assert.equal(judge({ ...ok(A), canonical: A.replace(/\/$/, "") }, ok(B)).verdict, "real");
 });
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }

@@ -37,6 +37,11 @@ function generateReportText(conflicts) {
       r += `#${idx + 1}: ${c.isQuery ? "[QUERY OVERLAP] " : ""}${c.label}\n`;
       r += `${c.sections.join(" + ")} · ${c.pageCount} URLs · ${c.totalClicks} clicks · ${c.totalImpressions.toLocaleString()} impr · Severity: ${c.score} · ${c.confidenceLabel || "—"}\n`;
       r += `Traffic split: ${c.splitPct}% (${c.splitStrength}) · Expected impact: ${c.impact}\n`;
+      if (c.live) {
+        r += `Live site: ${c.live.verdict.toUpperCase()}\n`;
+        c.live.problems.forEach(x => { r += `  ! ${x}\n`; });
+        c.live.done.forEach(x => { r += `  ✓ ${x}\n`; });
+      }
       if (c.positionConflict) r += `!! RANK/TRAFFIC MISMATCH — lower-traffic URL ranks higher; review structure. Do not redirect blindly.\n`;
       r += `\n>> ACTION: [${c.actionType}] ${c.suggestedAction}\n`;
       if (c.winner) r += `   Primary:   ${getPathname(c.winner.url)}\n`;
@@ -65,7 +70,7 @@ function generateReportText(conflicts) {
 // ─── CSV EXPORT ───
 
 function generateCSV(conflicts) {
-  const rows = [["Cluster","Type","Risk","Confidence","Score","Action","Suggested Action","Primary URL","Secondary URL","Traffic Split %","Strength","Expected Impact","Migration Flag","Sections","URLs in cluster","Total Clicks","Total Impressions","Why Flagged"]];
+  const rows = [["Cluster","Type","Risk","Confidence","Score","Action","Suggested Action","Primary URL","Secondary URL","Traffic Split %","Strength","Expected Impact","Migration Flag","Sections","URLs in cluster","Total Clicks","Total Impressions","Why Flagged","Live Check"]];
   conflicts.forEach(c => {
     const type = c.isTechnical ? "Technical" : c.isQuery ? "Query overlap" : c.isLikelyArchitecture ? "Architecture" : "Same-target URLs";
     rows.push([
@@ -77,6 +82,7 @@ function generateCSV(conflicts) {
       c.positionConflict ? "RANK/TRAFFIC MISMATCH" : "",
       c.sections.join(" + "), c.pageCount, c.totalClicks, c.totalImpressions,
       c.reasons.join("; "),
+      c.live ? `${c.live.verdict}: ${[...c.live.problems, ...c.live.done].join("; ")}` : "",
     ]);
   });
   return rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(",")).join("\n");

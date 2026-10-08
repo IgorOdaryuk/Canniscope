@@ -5,6 +5,17 @@ import { analyzePages, getPathname, getSection } from "./lib/analyze.js";
 import { analyzeQueries, pagesFromQueries } from "./lib/queries.js";
 import { detectFile, buildDeadIndex, DEAD_ISSUE } from "./lib/files.js";
 import { generateReportText, generateCSV } from "./lib/report.js";
+import { judgeCluster, urlsToCheck } from "./lib/live.js";
+
+const LIVE_CHUNK = 25;  // URLs per request to /api/check
+const LIVE_MAX = 300;   // URLs per scan
+
+const VERDICT_STYLE = {
+  real:      { label: "Real problem", color: "#dc2626", bg: "#fef2f2", border: "#fecaca" },
+  broken:    { label: "Fixed with a mistake", color: "#ea580c", bg: "#fff7ed", border: "#fed7aa" },
+  fixed:     { label: "Already fixed", color: "#059669", bg: "#ecfdf5", border: "#a7f3d0" },
+  unchecked: { label: "Not checked", color: "#6b7280", bg: "#f9fafb", border: "#e5e7eb" },
+};
 
 // ─── STYLES (Enterprise SaaS — light, clean, boring = good) ───
 
@@ -186,6 +197,23 @@ function SectionTree({ conflicts }) {
   );
 }
 
+function LiveVerdict({ live }) {
+  const v = VERDICT_STYLE[live.verdict];
+  const lead = {
+    real: "Both pages are live, indexable and canonical to themselves — this is a real conflict.",
+    broken: "Someone already started fixing this, but the fix has a problem:",
+    fixed: "Already handled on the live site. Google still reports the old URL for a while; nothing to do.",
+    unchecked: "The live check couldn't open enough of these pages to tell.",
+  }[live.verdict];
+  return (
+    <div style={{ margin: "12px 16px 0", padding: "10px 14px", borderRadius: 8, background: v.bg, border: `1px solid ${v.border}`, fontSize: 12.5, color: v.color, lineHeight: 1.6 }}>
+      <b>{v.label}.</b> {lead}
+      {live.problems.map((x, i) => <div key={"p" + i}>• {x}</div>)}
+      {live.verdict !== "broken" && live.done.map((x, i) => <div key={"d" + i} style={{ color: C.textSecondary }}>• {x}</div>)}
+    </div>
+  );
+}
+
 function DecisionBlock({ conflict: c }) {
   const [showWhy, setShowWhy] = useState(false);
   const a = ACTION_COLORS[c.actionType] || ACTION_COLORS.REVIEW;
@@ -296,6 +324,7 @@ function ConflictCard({ conflict: c }) {
       </div>
       {open && (
         <div style={{ borderTop: `1px solid ${C.borderLight}` }}>
+          {c.live && <LiveVerdict live={c.live} />}
           <DecisionBlock conflict={c} />
           <WhyFlagged reasons={c.reasons} />
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
@@ -306,6 +335,7 @@ function ConflictCard({ conflict: c }) {
                 <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Impr</th>
                 <th style={{ padding: "6px 8px", textAlign: "right", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Pos</th>
                 <th style={{ padding: "6px 16px", textAlign: "left", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Action</th>
+                {c.live && <th style={{ padding: "6px 16px", textAlign: "left", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>Live site now</th>}
               </tr>
             </thead>
             <tbody>
@@ -320,6 +350,12 @@ function ConflictCard({ conflict: c }) {
                   <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.impressions.toLocaleString()}</td>
                   <td style={{ padding: "8px", textAlign: "right", fontFamily: mono }}>{p.position.toFixed(1)}</td>
                   <td style={{ padding: "8px 16px" }}><ActionBadge action={p.action} /></td>
+                  {c.live && (() => {
+                    const lp = c.live.pages.find(x => x.url === p.url);
+                    const k = lp ? lp.state.kind : "unknown";
+                    const col = k === "live" ? C.text : k === "unknown" ? C.textTertiary : k === "gone" || k === "redirect-dead" ? C.high : C.low;
+                    return <td style={{ padding: "8px 16px", fontSize: 11, color: col, wordBreak: "break-all" }}>{lp ? lp.label : "—"}</td>;
+                  })()}
                 </tr>
                 );
               })}
@@ -346,6 +382,35 @@ export default function CanniScope() {
   const [confFilter, setConfFilter] = useState("all");
   const [brandInput, setBrandInput] = useState("");
   const [runInfo, setRunInfo] = useState(null);
+  const [liveOn, setLiveOn] = useState(true);
+  const [liveCheck, setLiveCheck] = useState(null);
+
+  // Open every flagged URL on the live site (via /api/check) and sort clusters
+  // into real problems / already fixed / fixed with a mistake.
+  const runLiveCheck = async (found) => {
+    const urls = urlsToCheck(found, LIVE_MAX);
+    if (!urls.length) return;
+    setLiveCheck({ state: "running", done: 0, total: urls.length });
+    const results = new Map();
+    const chunks = [];
+    for (let i = 0; i < urls.length; i += LIVE_CHUNK) chunks.push(urls.slice(i, i + LIVE_CHUNK));
+    let done = 0, failed = 0;
+    for (let i = 0; i < chunks.length; i += 2) {
+      await Promise.all(chunks.slice(i, i + 2).map(async (chunk) => {
+        try {
+          const r = await fetch("/api/check", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ urls: chunk }) });
+          if (!r.ok) throw new Error(String(r.status));
+          const j = await r.json();
+          j.results.forEach(x => results.set(x.url, x));
+        } catch { failed += chunk.length; }
+        done += chunk.length;
+        setLiveCheck({ state: "running", done, total: urls.length });
+      }));
+    }
+    const judged = found.map(c => ({ ...c, live: judgeCluster(c, results) }));
+    setConflicts(judged); setReportText(generateReportText(judged));
+    setLiveCheck({ state: failed === urls.length ? "error" : "done", done, total: urls.length, failed, skipped: Math.max(0, new Set(found.flatMap(c => c.pages.map(p => p.url))).size - urls.length) });
+  };
 
   const processFiles = async (files) => {
     setError(null); setCleanMsg(null); setLoading(true); setCopied(false);
@@ -403,6 +468,7 @@ export default function CanniScope() {
       setLoading(false); return;
     }
     setConflicts(results); setReportText(generateReportText(results)); setLoading(false);
+    if (liveOn) runLiveCheck(results);
   };
 
   const onDrop = (e) => { e.preventDefault(); setDragOver(false); processFiles(e.dataTransfer.files); };
@@ -410,7 +476,7 @@ export default function CanniScope() {
   const downloadReport = () => { const b = new Blob([reportText], { type: "text/plain;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-report.txt"; a.click(); URL.revokeObjectURL(u); };
   const downloadCSV = () => { const csv = generateCSV(conflicts); const b = new Blob([csv], { type: "text/csv;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-export.csv"; a.click(); URL.revokeObjectURL(u); };
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); setConfFilter("all"); setRunInfo(null); };
+  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); setConfFilter("all"); setRunInfo(null); setLiveCheck(null); };
 
   if (!conflicts) {
     return (
@@ -431,6 +497,10 @@ export default function CanniScope() {
             </div>
             <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8 }}>Select entire export folder</button>
             <input value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="Brand names and misspellings, comma separated (optional)" style={{ width: "100%", boxSizing: "border-box", marginTop: 8, padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: sans, color: C.text, background: C.surface }} />
+            <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 10, fontSize: 12, color: C.textSecondary, textAlign: "left", lineHeight: 1.5, cursor: "pointer" }}>
+              <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} style={{ marginTop: 2 }} />
+              <span>Check flagged URLs on the live site — finds pairs you already fixed with a 301, canonical or noindex. Only the addresses of flagged pages are sent to our checker; clicks, impressions and queries stay in your browser.</span>
+            </label>
             <input id="folder-input" type="file" webkitdirectory="" directory="" onChange={onFileSelect} style={{ display: "none" }} />
             {error && <div style={{ marginTop: 16, padding: "10px 14px", background: C.highBg, border: `1px solid ${C.highBorder}`, borderRadius: 6, fontSize: 13, color: C.high }}>{error}</div>}
             {cleanMsg && <div style={{ marginTop: 16, padding: "10px 14px", background: C.lowBg, border: `1px solid ${C.lowBorder}`, borderRadius: 6, fontSize: 13, color: C.low }}>{cleanMsg}</div>}
@@ -446,14 +516,18 @@ export default function CanniScope() {
     );
   }
 
-  const queryC = conflicts.filter(c => c.isQuery);
-  const seo = conflicts.filter(c => !c.isTechnical && !c.isQuery);
-  const tech = conflicts.filter(c => c.isTechnical);
+  // With a live check, only real (or unchecked) clusters go into the main lists.
+  const active = conflicts.filter(c => !c.live || c.live.verdict === "real" || c.live.verdict === "unchecked");
+  const fixedC = conflicts.filter(c => c.live && c.live.verdict === "fixed");
+  const brokenC = conflicts.filter(c => c.live && c.live.verdict === "broken");
+  const queryC = active.filter(c => c.isQuery);
+  const seo = active.filter(c => !c.isTechnical && !c.isQuery);
+  const tech = active.filter(c => c.isTechnical);
   const high = [...queryC, ...seo].filter(c => c.risk === "HIGH").length;
   const medium = [...queryC, ...seo].filter(c => c.risk === "MEDIUM").length;
   const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
 
-  const actionCounts = conflicts.reduce((acc, c) => {
+  const actionCounts = active.reduce((acc, c) => {
     acc[c.actionType] = (acc[c.actionType] || 0) + 1;
     return acc;
   }, {});
@@ -485,6 +559,23 @@ export default function CanniScope() {
         </div>
 
         <h2 style={s.h1}>{conflicts.length} possible clusters found</h2>
+        {liveCheck && liveCheck.state === "running" && (
+          <div style={{ padding: "8px 12px", background: C.accentLight, border: `1px solid ${C.accentBorder}`, borderRadius: 6, margin: "8px 0", fontSize: 12, color: C.accent }}>
+            Checking flagged URLs on the live site… {liveCheck.done} / {liveCheck.total}
+          </div>
+        )}
+        {liveCheck && liveCheck.state !== "running" && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", margin: "8px 0 12px" }}>
+            {[["real", active.length], ["broken", brokenC.length], ["fixed", fixedC.length]].map(([k, n]) => (
+              <span key={k} style={{ display: "inline-flex", flexDirection: "column", gap: 2, padding: "8px 14px", borderRadius: 8, background: VERDICT_STYLE[k].bg, border: `1px solid ${VERDICT_STYLE[k].border}`, minWidth: 120 }}>
+                <span style={{ fontSize: 20, fontWeight: 700, color: VERDICT_STYLE[k].color, lineHeight: 1 }}>{n}</span>
+                <span style={{ fontSize: 11, fontWeight: 600, color: VERDICT_STYLE[k].color }}>{k === "real" ? "To fix" : VERDICT_STYLE[k].label}</span>
+              </span>
+            ))}
+            {liveCheck.state === "error" && <span style={{ fontSize: 12, color: C.high, alignSelf: "center" }}>Live check failed — results below are not filtered.</span>}
+            {liveCheck.skipped > 0 && <span style={{ fontSize: 12, color: C.textTertiary, alignSelf: "center" }}>{liveCheck.skipped} lower-risk URLs not checked (limit {LIVE_MAX}).</span>}
+          </div>
+        )}
         <p style={{ fontSize: 13, color: C.textTertiary, margin: "0 0 16px" }}>
           {runInfo && runInfo.hasQueries && <>{queryC.length} competing in search · </>}{seo.length} same-target URLs · {tech.length} technical · {totalURLs} URLs involved
         </p>
@@ -584,6 +675,18 @@ export default function CanniScope() {
           <div style={{ marginBottom: 24 }}>
             <div style={s.sectionTitle(C.tech)}>Technical duplicates ({tech.length})</div>
             {tech.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
+        {brokenC.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(VERDICT_STYLE.broken.color)}>Fixed with a mistake ({brokenC.length})</div>
+            {brokenC.map((c, i) => <ConflictCard key={i} conflict={c} />)}
+          </div>
+        )}
+        {fixedC.length > 0 && (
+          <div style={{ marginBottom: 24 }}>
+            <div style={s.sectionTitle(VERDICT_STYLE.fixed.color)}>Already fixed on the live site — nothing to do ({fixedC.length})</div>
+            {fixedC.map((c, i) => <ConflictCard key={i} conflict={c} />)}
           </div>
         )}
 
