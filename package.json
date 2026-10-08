@@ -6,7 +6,7 @@
   "description": "Free, browser-based keyword-cannibalization auditor for local SEO. Drop in a Google Search Console Pages.csv export to find service+geo pages competing for the same query.",
   "author": "Igor Odariuk (https://odariuk.com)",
   "license": "MIT",
-  "homepage": "https://canniscope.vercel.app",
+  "homepage": "https://canniscope.odariuk.com",
   "repository": {
     "type": "git",
     "url": "https://github.com/IgorOdaryuk/Canniscope.git"

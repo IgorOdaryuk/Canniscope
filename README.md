@@ -4,7 +4,7 @@
 
 Drop in your Google Search Console `Pages.csv` export and CanniScope surfaces where multiple pages are competing for the same service + geo — structural conflicts, service-area overlaps, and trailing-slash duplicates — then ranks each cluster by risk and tells you what to do about it (merge, 301, canonical, or leave alone).
 
-👉 **Live app: [canniscope.vercel.app](https://canniscope.vercel.app)** — no signup, completely free.
+👉 **Live app: [canniscope.odariuk.com](https://canniscope.odariuk.com)** — no signup, completely free.
 
 ![CanniScope results — cannibalization clusters ranked by risk, with primary/secondary URLs, GSC data, and a recommended action](docs/canniscope-results.jpg)
 
@@ -39,7 +39,7 @@ CanniScope is a **100% client-side** app. Your files are parsed in-browser with 
 1. In **Google Search Console → Performance → Pages**, set your date range and **Export → CSV**.
 2. *(Recommended)* Get a **query + page CSV** — columns `query, page, clicks, impressions, position`. GSC's own export can't pair queries with pages; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.
 3. *(Recommended)* Get a **redirect / 404 list** — GSC → Indexing → Pages → "Page with redirect" and "Not found (404)" → Export (drop the whole unzipped folder), or a Screaming Frog export with a `Status Code` column.
-4. Open **[canniscope.vercel.app](https://canniscope.vercel.app)** and drop all files at once. Files are recognized by their columns, not by name.
+4. Open **[canniscope.odariuk.com](https://canniscope.odariuk.com)** and drop all files at once. Files are recognized by their columns, not by name.
 5. Review the clusters, starting with **Competing for the same searches**. Always sanity-check before making any redirect.
 
 > ⚠️ **Experimental beta.** CanniScope can produce false positives. It's a triage tool to point you at likely problems — always review a cluster manually before merging or redirecting anything.

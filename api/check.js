@@ -9,7 +9,7 @@ const MAX_URLS = 300;
 const MAX_HOPS = 5;
 const TIMEOUT_MS = 8000;
 const CONCURRENCY = 4;
-const UA = "Mozilla/5.0 (compatible; CanniScopeBot/1.0; +https://canniscope.vercel.app)";
+const UA = "Mozilla/5.0 (compatible; CanniScopeBot/1.0; +https://canniscope.odariuk.com)";
 
 // Block requests to private networks (SSRF): only public hosts may be checked.
 function isPrivateIp(ip) {
