@@ -69,6 +69,14 @@ function analyzeQueries(rows, opts = {}) {
   const pages = [...pageTotal.keys()];
   const identity = new Map(pages.map(u => [u, new Set([...slugTokens(u)].filter(t => !STATES.has(t)))]));
 
+  // Slug words in order, without stop words and state codes.
+  const slugWords = (u) => {
+    const parts = getPathname(u).split("/").filter(Boolean);
+    return tokenize(parts[parts.length - 1] || "").filter(t => !STATES.has(t));
+  };
+  // Replace the words only this page has with a slot: "icemaker-repair-*".
+  const pattern = (u, own) => slugWords(u).map(t => (own.has(t) ? "*" : t)).join("-").replace(/(\*-)+\*/g, "*");
+
   const byQuery = new Map();
   live.forEach(r => {
     if (!byQuery.has(r.query)) byQuery.set(r.query, []);
@@ -89,11 +97,15 @@ function analyzeQueries(rows, opts = {}) {
         const [A, B] = [cands[i], cands[j]].sort((x, y) => (x.page < y.page ? -1 : 1));
         const idA = identity.get(A.page), idB = identity.get(B.page);
         // What each page is about that the other is not, minus what the query asks for.
-        const restA = [...idA].filter(t => !idB.has(t) && !qt.has(t));
-        const restB = [...idB].filter(t => !idA.has(t) && !qt.has(t));
-        // Both pages aim at something the query doesn't ask for, and they aim differently
-        // (Dallas vs Houston on "ice maker repair"): Google is localizing, not confused.
-        if (restA.length && restB.length) {
+        const ownA = new Set([...idA].filter(t => !idB.has(t)));
+        const ownB = new Set([...idB].filter(t => !idA.has(t)));
+        const restA = [...ownA].filter(t => !qt.has(t));
+        const restB = [...ownB].filter(t => !qt.has(t));
+        // Same URL template with a different value in one slot ("icemaker-repair-dallas"
+        // vs "icemaker-repair-houston"), and the query names neither value: Google is
+        // localizing a generic search, not confused. Two posts about one product with
+        // different wording don't share a template, so they still count.
+        if (restA.length && restB.length && pattern(A.page, ownA) === pattern(B.page, ownB)) {
           stats.localizedSkips++;
           continue;
         }

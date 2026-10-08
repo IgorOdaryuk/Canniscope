@@ -113,6 +113,14 @@ const qRows = [
   q("ice maker repair", "/service-area/icemaker-repair-in-atlanta-ga/", 400, 30),
   q("ice machine repair", "/service-area/icemaker-repair-houston/", 300, 35),
   q("ice machine repair", "/service-area/icemaker-repair-in-atlanta-ga/", 280, 33),
+  // ...while each city page is mostly found by its own city
+  q("ice maker repair houston", "/service-area/icemaker-repair-houston/", 900, 6),
+  q("ice maker repair atlanta", "/service-area/icemaker-repair-in-atlanta-ga/", 800, 5),
+  // two posts about one product with different wording: real overlap, not localization
+  q("jolana d bass", "/blog/jolana-d-bass-guitar-review/", 255, 6.4),
+  q("jolana d bass", "/blog/jolana-d-bass-why-this-socialist-era-guitar-still-holds-up/", 162, 6.7),
+  q("jolana d-bass", "/blog/jolana-d-bass-guitar-review/", 45, 5.2),
+  q("jolana d-bass", "/blog/jolana-d-bass-why-this-socialist-era-guitar-still-holds-up/", 37, 7.5),
   // brand query on many pages
   q("examplefix reviews", "/service-area/icemaker-repair-houston/", 200, 2),
   q("examplefix reviews", "/service-area/icemaker-repair-in-atlanta-ga/", 200, 2),
@@ -131,6 +139,11 @@ test("query mode ignores generic searches split between different cities", () =>
   const res = analyzeQueries(qRows, { brands: ["examplefix", "example fix"] });
   assert.ok(!findCluster(res, "/service-area/icemaker-repair-houston/", "/service-area/icemaker-repair-in-atlanta-ga/"));
   assert.ok(res.stats.localizedSkips >= 2);
+});
+
+test("query mode flags two posts about the same product despite different wording", () => {
+  const res = analyzeQueries(qRows, { brands: ["examplefix", "example fix"] });
+  assert.ok(findCluster(res, "/blog/jolana-d-bass-guitar-review/", "/blog/jolana-d-bass-why-this-socialist-era-guitar-still-holds-up/"));
 });
 
 test("query mode ignores brand searches", () => {
