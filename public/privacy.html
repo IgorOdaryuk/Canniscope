@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Privacy Policy — CanniScope</title>
+<meta name="description" content="What CanniScope reads, where it is processed and what is never stored.">
+<link rel="canonical" href="https://canniscope.odariuk.com/privacy.html">
+<style>
+  body { margin: 0; background: #f8f9fa; color: #111827; font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif; }
+  main { max-width: 720px; margin: 0 auto; padding: 40px 16px 64px; }
+  h1 { font-size: 26px; letter-spacing: -0.02em; margin: 0 0 4px; }
+  h2 { font-size: 17px; margin: 28px 0 6px; }
+  p, li { color: #374151; }
+  .muted { color: #6b7280; font-size: 13px; }
+  a { color: #2563eb; }
+  code { background: #eef0f3; padding: 1px 5px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <p><a href="/">← CanniScope</a></p>
+  <h1>Privacy Policy</h1>
+  <p class="muted">Last updated: October 8, 2026 · Operator: Igor Odariuk, <a href="https://odariuk.com">odariuk.com</a></p>
+
+  <h2>Short version</h2>
+  <p>CanniScope runs in your browser. Your Search Console data — clicks, impressions, queries, positions — is processed on your device and is never sent to or stored on our servers. The only thing that leaves your browser is the list of page addresses the scan flagged, so we can check them on your live site.</p>
+
+  <h2>Files you upload</h2>
+  <p>CSV files you drop into CanniScope are read by your browser. They are not uploaded anywhere.</p>
+
+  <h2>Signing in with Google</h2>
+  <ul>
+    <li>If you choose “Sign in with Google”, Google asks you to allow read-only access to Search Console (<code>https://www.googleapis.com/auth/webmasters.readonly</code>).</li>
+    <li>With that permission your browser lists your Search Console properties and downloads search performance data (queries, pages, clicks, impressions, positions) for the property you pick, directly from Google.</li>
+    <li>The access token stays in your browser's memory for the session. We never receive it, never store it, and it disappears when you close or reload the page. You can revoke access at any time at <a href="https://myaccount.google.com/permissions">myaccount.google.com/permissions</a>.</li>
+    <li>CanniScope cannot change anything in your Search Console account: the permission is read-only.</li>
+  </ul>
+  <p>CanniScope's use and transfer of information received from Google APIs adheres to the <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API Services User Data Policy</a>, including the Limited Use requirements. Google user data is used only to show you the cannibalization report you asked for. It is not sold, not used for advertising, not shared with anyone and not used to train AI models.</p>
+
+  <h2>Live check of flagged pages</h2>
+  <p>When the live check is on (you can turn it off before a scan), the addresses of flagged pages are sent to <code>canniscope.odariuk.com/api/check</code>. The checker opens those public pages the same way a search engine does and returns the status code, redirect target, canonical tag and noindex flag. Only page addresses are sent — no metrics, no queries. Addresses are not stored after the response; our hosting provider (Vercel) keeps standard short-term request logs.</p>
+
+  <h2>Cookies and tracking</h2>
+  <p>CanniScope sets no cookies and uses no analytics or advertising trackers. The page loads a font from Google Fonts, which receives your IP address like any web request.</p>
+
+  <h2>Contact</h2>
+  <p>Questions or deletion requests: <a href="mailto:odaryukigor@gmail.com">odaryukigor@gmail.com</a>.</p>
+</main>
+</body>
+</html>

@@ -499,7 +499,8 @@ export default function CanniScope() {
       <div style={s.page}>
         <div style={{ ...s.container, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", minHeight: "100vh" }}>
           <div style={{ textAlign: "center", maxWidth: 480, width: "100%" }}>
-            <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 4, letterSpacing: "-0.02em" }}>CanniScope</div>
+            <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 2, letterSpacing: "-0.02em" }}>CanniScope</div>
+            <div style={{ marginBottom: 8 }}><a href="https://odariuk.com" target="_blank" rel="noopener" style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary, textDecoration: "none" }}>by <span style={{ color: C.accent, fontWeight: 600 }}>Igor Odariuk</span></a></div>
             <div style={{ display: "inline-block", fontSize: 10, fontWeight: 600, color: C.textTertiary, background: C.borderLight, padding: "3px 10px", borderRadius: 10, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 20 }}>Built for local SEO structures</div>
             <h1 style={{ fontSize: 24, fontWeight: 600, color: C.text, lineHeight: 1.15, letterSpacing: "-0.025em", marginBottom: 6 }}>Find duplicate URL targets<br/>on your site</h1>
             <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24, lineHeight: 1.5 }}>Upload your Google Search Console export. Add query + page data to see which pages really compete for the same searches, and a redirect list so URLs you already fixed are left out.</p>
@@ -566,7 +567,7 @@ export default function CanniScope() {
       <div style={s.container}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 24, flexWrap: "wrap", gap: 8 }}>
           <div>
-            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, letterSpacing: "-0.02em" }}>CanniScope</div>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, letterSpacing: "-0.02em" }}>CanniScope <span style={{ fontWeight: 400 }}>{" "}</span><a href="https://odariuk.com" target="_blank" rel="noopener" style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary, textDecoration: "none" }}>by <span style={{ color: C.accent, fontWeight: 600 }}>Igor Odariuk</span></a></div>
             <div style={{ fontSize: 9, fontWeight: 600, color: C.textTertiary, letterSpacing: "0.05em", textTransform: "uppercase" }}>Local SEO audit</div>
           </div>
           <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -738,6 +739,8 @@ export default function CanniScope() {
             {" · "}
             Need help fixing cannibalization?{" "}
             <a href="https://odariuk.com" target="_blank" rel="noopener noreferrer" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Get in touch</a>
+            {" · "}
+            <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
           </div>
         </div>
       </div>
