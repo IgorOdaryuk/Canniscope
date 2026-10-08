@@ -6,6 +6,7 @@ import { analyzeQueries, pagesFromQueries } from "./lib/queries.js";
 import { detectFile, buildDeadIndex, DEAD_ISSUE } from "./lib/files.js";
 import { generateReportText, generateCSV } from "./lib/report.js";
 import { judgeCluster, urlsToCheck } from "./lib/live.js";
+import { DEMO } from "./demo.js";
 
 const LIVE_CHUNK = 25;  // URLs per request to /api/check
 const LIVE_MAX = 300;   // URLs per scan
@@ -387,6 +388,21 @@ export default function CanniScope() {
 
   // Open every flagged URL on the live site (via /api/check) and sort clusters
   // into real problems / already fixed / fixed with a mistake.
+  // Example run on made-up data: same pipeline, live answers baked in.
+  const runDemo = () => {
+    setError(null); setCleanMsg(null); setCopied(false);
+    const pageRows = pagesFromQueries(DEMO.queryRows);
+    const slug = analyzePages(pageRows);
+    const q = analyzeQueries(DEMO.queryRows, { brands: DEMO.brands });
+    const found = [...q.conflicts, ...slug.conflicts];
+    const live = new Map(DEMO.liveResults.map(r => [r.url, r]));
+    const judged = found.map(c => ({ ...c, live: judgeCluster(c, live) }));
+    setIgnoredCounts(slug.ignoredCounts); setTotalPages(slug.totalPages);
+    setRunInfo({ hasQueries: true, queryStats: q.stats, deadCount: 0, resolved: 0, statusFiles: 0, notes: [`Example data for a made-up site (${DEMO.site}). Upload your own files to scan your site.`], totalImpr: 0, demo: true });
+    setConflicts(judged); setReportText(generateReportText(judged));
+    setLiveCheck({ state: "done", done: DEMO.liveResults.length, total: DEMO.liveResults.length, failed: 0, skipped: 0 });
+  };
+
   const runLiveCheck = async (found) => {
     const urls = urlsToCheck(found, LIVE_MAX);
     if (!urls.length) return;
@@ -495,7 +511,10 @@ export default function CanniScope() {
               <div style={{ fontSize: 12, color: C.textTertiary }}>Pages.csv · query + page CSV · redirect / 404 list — drop them together or click to browse</div>
               <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
-            <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8 }}>Select entire export folder</button>
+            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+              <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), flex: 1, justifyContent: "center" }}>Select entire export folder</button>
+              <button onClick={runDemo} style={{ ...s.btn(false), flex: 1, justifyContent: "center", color: C.accent, borderColor: C.accentBorder }}>See an example →</button>
+            </div>
             <input value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="Brand names and misspellings, comma separated (optional)" style={{ width: "100%", boxSizing: "border-box", marginTop: 8, padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: sans, color: C.text, background: C.surface }} />
             <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 10, fontSize: 12, color: C.textSecondary, textAlign: "left", lineHeight: 1.5, cursor: "pointer" }}>
               <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} style={{ marginTop: 2 }} />
