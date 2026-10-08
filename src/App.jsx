@@ -341,6 +341,15 @@ function ConflictCard({ conflict: c }) {
         <span style={{ color: C.textTertiary, fontSize: 12, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
       </div>
       {open && (
+        <ConflictDetails c={c} />
+      )}
+    </div>
+  );
+}
+
+// Technical internals of one cluster: live verdict, decision, reasons, page table.
+function ConflictDetails({ c }) {
+  return (
         <div style={{ borderTop: `1px solid ${C.borderLight}` }}>
           <div style={{ margin: "10px 16px 0", textAlign: "right", fontSize: 11 }}>
             <a href={reportUrl(c)} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Wrong call? Report it on GitHub</a>
@@ -348,7 +357,8 @@ function ConflictCard({ conflict: c }) {
           {c.live && <LiveVerdict live={c.live} />}
           <DecisionBlock conflict={c} />
           <WhyFlagged reasons={c.reasons} />
-          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+          <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", minWidth: 560, borderCollapse: "collapse", fontSize: 12 }}>
             <thead>
               <tr style={{ borderBottom: `1px solid ${C.borderLight}` }}>
                 <th style={{ padding: "6px 16px", textAlign: "left", fontWeight: 600, color: C.textTertiary, fontSize: 10, textTransform: "uppercase", letterSpacing: "0.05em" }}>URL</th>
@@ -382,9 +392,8 @@ function ConflictCard({ conflict: c }) {
               })}
             </tbody>
           </table>
+          </div>
         </div>
-      )}
-    </div>
   );
 }
 
@@ -395,13 +404,32 @@ const KIND_COLOR = { broken: "#ea580c", fight: "#dc2626", steal: "#d97706", choo
 function SimpleCard({ conflict }) {
   const e = explain(conflict);
   const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
   const copy = () => { navigator.clipboard.writeText(e.devNote); setCopied(true); setTimeout(() => setCopied(false), 2000); };
   return (
     <div style={{ ...s.card, padding: "18px 20px", marginBottom: 10, borderLeft: `4px solid ${KIND_COLOR[e.kind]}` }}>
-      <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6, lineHeight: 1.35 }}>{e.title}</div>
-      <div style={{ fontSize: 14, color: C.textSecondary, lineHeight: 1.6, marginBottom: 10, wordBreak: "break-word" }}>{e.story}</div>
-      <div style={{ fontSize: 14, color: C.text, lineHeight: 1.6, marginBottom: 12, wordBreak: "break-word" }}><b>What to do:</b> {e.todo}</div>
-      <button onClick={copy} style={{ ...s.btn(false), color: C.accent, borderColor: C.accentBorder }}>{copied ? "✓ Copied — paste it to your developer" : "Copy note for your web developer"}</button>
+      <div style={{ fontSize: 17, fontWeight: 600, color: C.text, marginBottom: 10, lineHeight: 1.35 }}>{e.title}</div>
+      <div style={{ marginBottom: 12 }}>
+        {e.pages.map((p, i) => (
+          <div key={i} style={{ fontSize: 13, lineHeight: 1.6, wordBreak: "break-all" }}>
+            <span style={{ color: C.textTertiary, display: "inline-block", minWidth: 120, marginRight: 8 }}>{p.label}</span>
+            <span style={{ fontFamily: mono, fontSize: 12, color: C.text }}>{p.path}</span>
+          </div>
+        ))}
+      </div>
+      {[["What's happening", e.what], ["Why it matters", e.why], ["If you leave it", e.ifLeft], ["What to do", e.todo]].map(([h, t]) => (
+        <div key={h} style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 8, color: h === "What to do" ? C.text : C.textSecondary }}>
+          <b style={{ color: C.text }}>{h}:</b> {t}
+        </div>
+      ))}
+      <div style={{ height: 4 }} />
+      <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <button onClick={copy} style={{ ...s.btn(false), color: C.accent, borderColor: C.accentBorder }}>{copied ? "✓ Copied — paste it to your developer" : "Copy note for your web developer"}</button>
+        <button onClick={() => setOpen(v => !v)} style={{ background: "none", border: "none", padding: 0, cursor: "pointer", fontSize: 13, color: C.textTertiary, fontFamily: sans }}>
+          Advanced details <span style={{ display: "inline-block", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.15s" }}>▸</span>
+        </button>
+      </div>
+      {open && <div style={{ margin: "14px -20px -18px", borderTop: `1px solid ${C.borderLight}`, paddingBottom: 12 }}><ConflictDetails c={conflict} /></div>}
     </div>
   );
 }
