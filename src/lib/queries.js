@@ -64,6 +64,9 @@ function analyzeQueries(rows, opts = {}) {
     return true;
   });
   live.forEach(r => pageTotal.set(r.page, (pageTotal.get(r.page) || 0) + r.impressions));
+  // Each page's queries, for "what this page is already found by".
+  const pageQueries = new Map();
+  live.forEach(r => { if (!pageQueries.has(r.page)) pageQueries.set(r.page, []); pageQueries.get(r.page).push(r); });
 
   // What each page is about: its slug words minus state codes. Words both pages
   // share cancel out below, so there is no need for a site-wide stop list.
@@ -244,6 +247,16 @@ function analyzeQueries(rows, opts = {}) {
       positionConflict,
       isTechnical: false, isQuery: true,
       sharedQueries: pr.qs.length, contested,
+      // Plain-language view needs the raw numbers, keyed by keep/other page.
+      topQueries: topQs.map(x => {
+        const k = x.a.page === P ? x.a : x.b, o = x.a.page === P ? x.b : x.a;
+        return { query: x.query, keep: { impressions: k.impressions, position: k.position }, other: { impressions: o.impressions, position: o.position } };
+      }),
+      otherOwnQuery: (() => {
+        const shared = new Set(pr.qs.map(x => x.query));
+        const best = (pageQueries.get(S) || []).filter(r => !shared.has(r.query) && !isBrand(r.query)).sort((x, y) => y.impressions - x.impressions)[0];
+        return best ? best.query : null;
+      })(),
     });
   });
 

@@ -8,6 +8,7 @@ import { generateReportText, generateCSV } from "./lib/report.js";
 import { withLive, urlsToCheck } from "./lib/live.js";
 import { DEMO } from "./demo.js";
 import { signIn, listSites, loadSite, revoke } from "./lib/gsc.js";
+import { explain, summarize } from "./lib/plain.js";
 
 // Public OAuth client ID (not a secret). Sign-in stays hidden until it is set.
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
@@ -387,6 +388,24 @@ function ConflictCard({ conflict: c }) {
   );
 }
 
+// ─── SIMPLE VIEW ───
+
+const KIND_COLOR = { broken: "#ea580c", fight: "#dc2626", steal: "#d97706", choose: "#d97706", tech: "#6366f1", maybe: "#6b7280" };
+
+function SimpleCard({ conflict }) {
+  const e = explain(conflict);
+  const [copied, setCopied] = useState(false);
+  const copy = () => { navigator.clipboard.writeText(e.devNote); setCopied(true); setTimeout(() => setCopied(false), 2000); };
+  return (
+    <div style={{ ...s.card, padding: "18px 20px", marginBottom: 10, borderLeft: `4px solid ${KIND_COLOR[e.kind]}` }}>
+      <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6, lineHeight: 1.35 }}>{e.title}</div>
+      <div style={{ fontSize: 14, color: C.textSecondary, lineHeight: 1.6, marginBottom: 10, wordBreak: "break-word" }}>{e.story}</div>
+      <div style={{ fontSize: 14, color: C.text, lineHeight: 1.6, marginBottom: 12, wordBreak: "break-word" }}><b>What to do:</b> {e.todo}</div>
+      <button onClick={copy} style={{ ...s.btn(false), color: C.accent, borderColor: C.accentBorder }}>{copied ? "✓ Copied — paste it to your developer" : "Copy note for your web developer"}</button>
+    </div>
+  );
+}
+
 // ─── MAIN APP ───
 
 export default function CanniScope() {
@@ -403,6 +422,7 @@ export default function CanniScope() {
   const [brandInput, setBrandInput] = useState("");
   const [runInfo, setRunInfo] = useState(null);
   const [liveOn, setLiveOn] = useState(true);
+  const [showTech, setShowTech] = useState(false);
   const [gToken, setGToken] = useState(null);
   const [gSites, setGSites] = useState(null);
   const [gSite, setGSite] = useState("");
@@ -546,7 +566,7 @@ export default function CanniScope() {
   const downloadReport = () => { const b = new Blob([reportText], { type: "text/plain;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-report.txt"; a.click(); URL.revokeObjectURL(u); };
   const downloadCSV = () => { const csv = generateCSV(conflicts); const b = new Blob([csv], { type: "text/csv;charset=utf-8" }); const u = URL.createObjectURL(b); const a = document.createElement("a"); a.href = u; a.download = "canniscope-export.csv"; a.click(); URL.revokeObjectURL(u); };
   const copyReport = () => { navigator.clipboard.writeText(reportText); setCopied(true); setTimeout(() => setCopied(false), 2000); };
-  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); setConfFilter("all"); setRunInfo(null); setLiveCheck(null); };
+  const reset = () => { setConflicts(null); setReportText(""); setError(null); setCleanMsg(null); setIgnoredCounts(null); setTotalPages(0); setConfFilter("all"); setRunInfo(null); setLiveCheck(null); setShowTech(false); };
 
   if (!conflicts) {
     return (
@@ -555,18 +575,17 @@ export default function CanniScope() {
           <div style={{ textAlign: "center", maxWidth: 480, width: "100%" }}>
             <div style={{ fontSize: 20, fontWeight: 600, color: C.text, marginBottom: 2, letterSpacing: "-0.02em" }}>CanniScope</div>
             <div style={{ marginBottom: 8 }}><a href="https://odariuk.com" target="_blank" rel="noopener" style={{ fontSize: 12, fontWeight: 500, color: C.textSecondary, textDecoration: "none" }}>by <span style={{ color: C.accent, fontWeight: 600 }}>Igor Odariuk</span></a></div>
-            <div style={{ display: "inline-block", fontSize: 10, fontWeight: 600, color: C.textTertiary, background: C.borderLight, padding: "3px 10px", borderRadius: 10, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 20 }}>Built for local SEO structures</div>
-            <h1 style={{ fontSize: 24, fontWeight: 600, color: C.text, lineHeight: 1.15, letterSpacing: "-0.025em", marginBottom: 6 }}>Find duplicate URL targets<br/>on your site</h1>
-            <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24, lineHeight: 1.5 }}>Upload your Google Search Console export. Add query + page data to see which pages really compete for the same searches, and a redirect list so URLs you already fixed are left out.</p>
+            <h1 style={{ fontSize: 26, fontWeight: 700, color: C.text, lineHeight: 1.2, letterSpacing: "-0.025em", margin: "18px 0 10px" }}>Are your own pages competing with each other on Google?</h1>
+            <p style={{ fontSize: 15, color: C.textSecondary, marginBottom: 24, lineHeight: 1.55 }}>When two pages on your site go after the same search, Google splits its attention and both end up lower. CanniScope finds those pairs and tells you in plain English what to do. Free.</p>
             {GOOGLE_CLIENT_ID && (
               <div style={{ ...s.card, padding: "14px 16px", marginBottom: 12, textAlign: "left" }}>
                 {!gToken ? (
                   <>
                     <button onClick={googleSignIn} disabled={!!gBusy} style={{ ...s.btn(true), width: "100%", justifyContent: "center", padding: "10px 16px" }}>
-                      {gBusy || "Sign in with Google — scan straight from Search Console"}
+                      {gBusy || "Check my site — sign in with Google"}
                     </button>
                     <div style={{ fontSize: 11.5, color: C.textTertiary, marginTop: 8, lineHeight: 1.5 }}>
-                      Read-only access. Your data goes from Google to this browser tab and nowhere else. <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
+                      We only read your Search Console numbers. They go from Google to this tab and nowhere else. <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
                     </div>
                   </>
                 ) : (
@@ -588,33 +607,87 @@ export default function CanniScope() {
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#059669" + "14", color: "#059669", border: "1px solid #059669" + "30", fontFamily: mono, letterSpacing: "0.03em" }}>.CSV</span>
               </div>
-              <div style={{ fontSize: 14, fontWeight: 500, color: C.text, marginBottom: 3 }}>{loading ? "Analyzing..." : "Drop your GSC export here"}</div>
-              <div style={{ fontSize: 12, color: C.textTertiary }}>Pages.csv · query + page CSV · redirect / 404 list — drop them together or click to browse</div>
+              <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>{loading ? "Checking your site…" : "Drop your Search Console file here"}</div>
+              <div style={{ fontSize: 12, color: C.textTertiary }}>Google Search Console → Performance → Export → CSV · or click to choose</div>
               <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
-            <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-              <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), flex: 1, justifyContent: "center" }}>Select entire export folder</button>
-              <button onClick={runDemo} style={{ ...s.btn(false), flex: 1, justifyContent: "center", color: C.accent, borderColor: C.accentBorder }}>See an example →</button>
-            </div>
+            <button onClick={runDemo} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8, padding: "10px 14px", color: C.accent, borderColor: C.accentBorder }}>Not sure? See an example first →</button>
+            {error && <div style={{ marginTop: 16, padding: "10px 14px", background: C.highBg, border: `1px solid ${C.highBorder}`, borderRadius: 6, fontSize: 13, color: C.high }}>{error}</div>}
+            {cleanMsg && <div style={{ marginTop: 16, padding: "10px 14px", background: C.lowBg, border: `1px solid ${C.lowBorder}`, borderRadius: 6, fontSize: 13, color: C.low }}>{cleanMsg}</div>}
+            <details style={{ marginTop: 24, textAlign: "left" }}>
+              <summary style={{ cursor: "pointer", fontSize: 12, color: C.textTertiary }}>Advanced options (for SEOs)</summary>
+            <button onClick={() => document.getElementById("folder-input").click()} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8 }}>Select entire export folder</button>
             <input value={brandInput} onChange={(e) => setBrandInput(e.target.value)} placeholder="Brand names and misspellings, comma separated (optional)" style={{ width: "100%", boxSizing: "border-box", marginTop: 8, padding: "8px 12px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: sans, color: C.text, background: C.surface }} />
             <label style={{ display: "flex", gap: 8, alignItems: "flex-start", marginTop: 10, fontSize: 12, color: C.textSecondary, textAlign: "left", lineHeight: 1.5, cursor: "pointer" }}>
               <input type="checkbox" checked={liveOn} onChange={(e) => setLiveOn(e.target.checked)} style={{ marginTop: 2 }} />
               <span>Check flagged URLs on the live site — finds pairs you already fixed with a 301, canonical or noindex. Only the addresses of flagged pages are sent to our checker; clicks, impressions and queries stay in your browser.</span>
             </label>
             <input id="folder-input" type="file" webkitdirectory="" directory="" onChange={onFileSelect} style={{ display: "none" }} />
-            {error && <div style={{ marginTop: 16, padding: "10px 14px", background: C.highBg, border: `1px solid ${C.highBorder}`, borderRadius: 6, fontSize: 13, color: C.high }}>{error}</div>}
-            {cleanMsg && <div style={{ marginTop: 16, padding: "10px 14px", background: C.lowBg, border: `1px solid ${C.lowBorder}`, borderRadius: 6, fontSize: 13, color: C.low }}>{cleanMsg}</div>}
-            <div style={{ marginTop: 24, padding: "14px 18px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.textSecondary, lineHeight: 1.8, textAlign: "left" }}>
+            <div style={{ marginTop: 12, padding: "14px 18px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.textSecondary, lineHeight: 1.8, textAlign: "left" }}>
               <div style={{ fontWeight: 600, color: C.text, marginBottom: 4, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>Files the scan understands</div>
               <b style={{ color: C.text }}>Pages.csv</b> — GSC → Performance → 3 months → Export → unzip.<br/>
               <b style={{ color: C.text }}>Query + page CSV</b> (recommended) — columns query, page, clicks, impressions, position. GSC's own export can't pair them; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.<br/>
               <b style={{ color: C.text }}>Redirect / 404 list</b> (optional) — not needed when the live check is on. Useful if your site blocks bots: GSC → Indexing → Pages → “Page with redirect” / “Not found (404)” → Export, or a Screaming Frog export with Status Code.
             </div>
+            </details>
             <div style={{ marginTop: 16, fontSize: 12, color: C.textTertiary }}>
               by <a href="https://odariuk.com" target="_blank" rel="noopener" style={{ color: C.accent, textDecoration: "none", fontWeight: 600 }}>Igor Odariuk</a>
               {" · "}<a href={REPO} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Open source on GitHub — issues and PRs welcome</a>
               {" · "}<a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
             </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!showTech) {
+    const { todo, fixed } = summarize(conflicts);
+    const order = { broken: 0, fight: 1, steal: 2, choose: 3, tech: 4, maybe: 5 };
+    const cards = [...todo].sort((a, b) => (order[explain(a).kind] - order[explain(b).kind]) || ((b.contested || b.totalImpressions || 0) - (a.contested || a.totalImpressions || 0)));
+    const running = liveCheck && liveCheck.state === "running";
+    return (
+      <div style={s.page}>
+        <div style={{ ...s.container, maxWidth: 760 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 28, flexWrap: "wrap", gap: 8 }}>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 600, color: C.text }}>CanniScope</div>
+              <a href="https://odariuk.com" target="_blank" rel="noopener" style={{ fontSize: 12, color: C.textSecondary, textDecoration: "none" }}>by <span style={{ color: C.accent, fontWeight: 600 }}>Igor Odariuk</span></a>
+            </div>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button onClick={() => setShowTech(true)} style={s.btn(false)}>Technical details</button>
+              <button onClick={reset} style={s.btn(false)}>Check another site</button>
+            </div>
+          </div>
+
+          {runInfo && runInfo.demo && <div style={{ fontSize: 13, color: C.textTertiary, marginBottom: 12 }}>This is an example on a made-up site.</div>}
+          {running ? (
+            <h2 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: "0 0 8px" }}>Checking your pages… {liveCheck.done} / {liveCheck.total}</h2>
+          ) : (
+            <h2 style={{ fontSize: 26, fontWeight: 700, color: C.text, margin: "0 0 8px", letterSpacing: "-0.02em" }}>
+              {cards.length === 0 ? "Nothing to fix. Your pages don't compete with each other." : `${cards.length} thing${cards.length === 1 ? "" : "s"} to fix on your site`}
+            </h2>
+          )}
+          {!running && fixed.length > 0 && (
+            <div style={{ fontSize: 14, color: "#059669", marginBottom: 8 }}>✓ {fixed.length} older issue{fixed.length === 1 ? " is" : "s are"} already fixed on your site. Nothing to do there.</div>
+          )}
+          {!running && runInfo && !runInfo.hasQueries && !runInfo.demo && (
+            <div style={{ fontSize: 13, color: C.textSecondary, margin: "8px 0", lineHeight: 1.5 }}>We only had your page list, so these are pages that <i>look</i> alike. Signing in with Google lets us see which searches each page gets and find the real fights.</div>
+          )}
+
+          <div style={{ marginTop: 20 }}>
+            {cards.map((c, i) => <SimpleCard key={i} conflict={c} />)}
+          </div>
+
+          <div style={{ ...s.card, padding: "20px 22px", marginTop: 24, background: C.accentLight, borderColor: C.accentBorder }}>
+            <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 6 }}>Don't have time to deal with this?</div>
+            <div style={{ fontSize: 14, color: C.textSecondary, lineHeight: 1.6, marginBottom: 12 }}>I'm Igor. I fix this kind of thing for service businesses. A fixed-price check of your site, with a clear list of what to change, is $490.</div>
+            <a href="https://odariuk.com/pricing#snapshot" target="_blank" rel="noopener" style={{ ...s.btn(true), textDecoration: "none" }}>See what's included →</a>
+          </div>
+
+          <div style={{ textAlign: "center", padding: "28px 0 8px", fontSize: 12, color: C.textTertiary }}>
+            <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>{" · "}
+            <a href={REPO} target="_blank" rel="noopener noreferrer" style={{ color: C.textTertiary }}>Open source on GitHub</a>
           </div>
         </div>
       </div>
@@ -659,6 +732,7 @@ export default function CanniScope() {
             <button onClick={downloadReport} style={s.btn(true)}>Export Report</button>
             <button onClick={downloadCSV} style={s.btn(true)}>Export CSV</button>
             <button onClick={copyReport} style={s.btn(false)}>{copied ? "✓ Copied" : "Copy"}</button>
+            <button onClick={() => setShowTech(false)} style={s.btn(false)}>Simple view</button>
             <button onClick={reset} style={s.btn(false)}>New Scan</button>
           </div>
         </div>

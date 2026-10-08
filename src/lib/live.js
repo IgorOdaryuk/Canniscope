@@ -55,19 +55,26 @@ function judgeCluster(conflict, results) {
   const unknown = pages.filter(p => p.live.kind === "unknown");
   const problems = [];
   const done = [];
+  // Same problems, structured, for the plain-language view.
+  const issues = [];
 
   pages.forEach(p => {
     const s = p.live;
     const path = shortPath(p.url);
     if (s.kind === "redirect") {
       const intoCluster = pages.some(o => o.url !== p.url && samePage(o.url, s.target));
-      if (!s.permanent) problems.push(`${path} uses a temporary ${s.status} redirect — switch to 301 so Google moves its signals`);
-      else if (s.hops > 1) problems.push(`${path} reaches its target through ${s.hops} redirects — point it straight to ${shortPath(s.target)}`);
+      if (!s.permanent) { problems.push(`${path} uses a temporary ${s.status} redirect — switch to 301 so Google moves its signals`); issues.push({ type: "temporary", url: p.url, target: s.target, status: s.status }); }
+      else if (s.hops > 1) { problems.push(`${path} reaches its target through ${s.hops} redirects — point it straight to ${shortPath(s.target)}`); issues.push({ type: "chain", url: p.url, target: s.target, hops: s.hops }); }
       else done.push(`${path} → 301 to ${intoCluster ? "the kept page" : shortPath(s.target)}`);
     } else if (s.kind === "redirect-dead") {
       problems.push(`${path} redirects to a page that is gone (${shortPath(s.target)})`);
+      issues.push({ type: "dead-target", url: p.url, target: s.target });
     } else if (s.kind === "gone") {
-      if (p.clicks > 0) problems.push(`${path} returns ${s.status} but still got ${p.clicks} clicks in your data — 301 it to the kept page instead of deleting`);
+      if (p.clicks > 0) {
+        problems.push(`${path} returns ${s.status} but still got ${p.clicks} click${p.clicks === 1 ? "" : "s"} in your data — 301 it to the kept page instead of deleting`);
+        const keep = pages.find(o => o.url !== p.url && o.live.kind === "live");
+        issues.push({ type: "deleted", url: p.url, clicks: p.clicks, impressions: p.impressions, keep: keep ? keep.url : null });
+      }
       else done.push(`${path} removed (${s.status}), no clicks lost`);
     } else if (s.kind === "canonical") {
       done.push(`${path} has canonical → ${shortPath(s.target)}`);
@@ -89,6 +96,7 @@ function judgeCluster(conflict, results) {
     keepUrl: liveOnes.length === 1 ? liveOnes[0].url : null,
     pages: pages.map(p => ({ url: p.url, state: p.live, label: stateLabel(p.live) })),
     problems,
+    issues,
     done,
   };
 }
