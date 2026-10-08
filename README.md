@@ -24,7 +24,8 @@ CanniScope is a **100% client-side** app. Your files are parsed in-browser with 
 
 - **Reads GSC `Pages.csv`** (Performance → Pages export) directly in the browser.
 - **Query overlap mode** — give it a query + page CSV and it shows which of your pages actually get impressions for the same searches, how many impressions are contested, and whether to merge, retarget or leave the pair alone. Brand searches, homepage overlaps and generic searches that Google splits by city ("ice maker repair" on a Dallas page and a Houston page) are left out.
-- **Knows what you already fixed** — add a redirect / 404 list and those URLs drop out before the scan; clusters they used to cause are counted as resolved instead of reported. GSC keeps showing redirected URLs for months, so without this list a lot of the output is old news.
+- **Live check** — every flagged URL is opened on your live site (status, redirect, canonical, noindex). Pairs land in three lists: *to fix*, *already fixed* (one page already 301s / canonicalizes / noindexes onto the other) and *fixed with a mistake* (404 on a page that had clicks, redirect chains, temporary redirects). Only page addresses are sent to the checker.
+- **Knows what you already fixed** — you can also add a redirect / 404 list and those URLs drop out before the scan; clusters they used to cause are counted as resolved instead of reported. GSC keeps showing redirected URLs for months, so without this list a lot of the output is old news.
 - **Detects same-target URLs** — groups pages that target the same service + location, using slug tokenization at word boundaries (not naive substring matching). `dallas-ga` and `dallas-tx` never share a cluster; a match that only works after dropping a state or a "city" suffix is shown for manual review, never as a redirect.
 - **Filters out false positives** — brand pages (Sub-Zero, LG…), symptom pages (`not-cooling`), modifier pages (`cost`, `near-me`), content/blog and informational pages are recognized and *not* flagged against plain service pages.
 - **Risk-ranks every cluster** — High / Medium / Low, plus a separate bucket for technical duplicates (trailing slash, etc.).
@@ -35,6 +36,10 @@ CanniScope is a **100% client-side** app. Your files are parsed in-browser with 
 ## How to use
 
 ![CanniScope upload screen — drop your Google Search Console Pages.csv export to start](docs/canniscope-upload.jpg)
+
+**Fastest:** open the app and click **Sign in with Google**, pick your Search Console property, done. Access is read-only, the token lives in your browser tab only, and the data goes from Google straight to your browser. See the [privacy policy](https://canniscope.odariuk.com/privacy.html).
+
+**Or with files:**
 
 1. In **Google Search Console → Performance → Pages**, set your date range and **Export → CSV**.
 2. *(Recommended)* Get a **query + page CSV** — columns `query, page, clicks, impressions, position`. GSC's own export can't pair queries with pages; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.

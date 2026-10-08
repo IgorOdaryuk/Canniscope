@@ -7,6 +7,10 @@ import { detectFile, buildDeadIndex, DEAD_ISSUE } from "./lib/files.js";
 import { generateReportText, generateCSV } from "./lib/report.js";
 import { withLive, urlsToCheck } from "./lib/live.js";
 import { DEMO } from "./demo.js";
+import { signIn, listSites, loadSite, revoke } from "./lib/gsc.js";
+
+// Public OAuth client ID (not a secret). Sign-in stays hidden until it is set.
+const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
 const LIVE_CHUNK = 25;  // URLs per request to /api/check
 const LIVE_MAX = 300;   // URLs per scan
@@ -384,6 +388,36 @@ export default function CanniScope() {
   const [brandInput, setBrandInput] = useState("");
   const [runInfo, setRunInfo] = useState(null);
   const [liveOn, setLiveOn] = useState(true);
+  const [gToken, setGToken] = useState(null);
+  const [gSites, setGSites] = useState(null);
+  const [gSite, setGSite] = useState("");
+  const [gBusy, setGBusy] = useState("");
+
+  const googleSignIn = async () => {
+    setError(null); setGBusy("Waiting for Google…");
+    try {
+      const token = await signIn(GOOGLE_CLIENT_ID);
+      setGToken(token);
+      const sites = await listSites(token);
+      setGSites(sites); setGSite(sites[0] || "");
+      if (!sites.length) setError("This Google account has no Search Console properties.");
+    } catch (e) { setError(e.message); }
+    setGBusy("");
+  };
+
+  const googleScan = async () => {
+    if (!gToken || !gSite) return;
+    setError(null); setCleanMsg(null); setLoading(true);
+    try {
+      const { range, pageRows, queryRows } = await loadSite(gToken, gSite, (msg) => setGBusy(`Downloading from Search Console — ${msg}`));
+      setGBusy("");
+      const pagesFile = detectFile(pageRows, ["Top pages", "Clicks", "Impressions", "CTR", "Position"]);
+      const queryFile = queryRows.length ? detectFile(queryRows, ["query", "page", "clicks", "impressions", "position"]) : null;
+      runScan({ pagesFile, queryFile, notes: [`Search Console: ${gSite} · ${range}`] });
+    } catch (e) { setError(e.message); setGBusy(""); setLoading(false); }
+  };
+
+  const googleSignOut = () => { if (gToken) revoke(gToken); setGToken(null); setGSites(null); setGSite(""); };
   const [liveCheck, setLiveCheck] = useState(null);
 
   // Open every flagged URL on the live site (via /api/check) and sort clusters
@@ -460,6 +494,11 @@ export default function CanniScope() {
       setLoading(false); return;
     }
 
+    runScan({ pagesFile, queryFile, statusFiles, notes });
+  };
+
+  // Shared by file upload and Google sign-in.
+  const runScan = ({ pagesFile, queryFile, statusFiles = [], notes = [] }) => {
     const merged = (pagesFile ? pagesFile.mergedVariants : 0) + (queryFile ? queryFile.mergedVariants : 0);
     if (merged > 0) notes.push(`${merged.toLocaleString()} rows for URLs with tracking tags or #anchors were merged into their page (e.g. “/?utm_source=gbp” counts as “/”).`);
     const { dead, isDead } = buildDeadIndex(statusFiles);
@@ -504,6 +543,32 @@ export default function CanniScope() {
             <div style={{ display: "inline-block", fontSize: 10, fontWeight: 600, color: C.textTertiary, background: C.borderLight, padding: "3px 10px", borderRadius: 10, letterSpacing: "0.04em", textTransform: "uppercase", marginBottom: 20 }}>Built for local SEO structures</div>
             <h1 style={{ fontSize: 24, fontWeight: 600, color: C.text, lineHeight: 1.15, letterSpacing: "-0.025em", marginBottom: 6 }}>Find duplicate URL targets<br/>on your site</h1>
             <p style={{ fontSize: 13, color: C.textSecondary, marginBottom: 24, lineHeight: 1.5 }}>Upload your Google Search Console export. Add query + page data to see which pages really compete for the same searches, and a redirect list so URLs you already fixed are left out.</p>
+            {GOOGLE_CLIENT_ID && (
+              <div style={{ ...s.card, padding: "14px 16px", marginBottom: 12, textAlign: "left" }}>
+                {!gToken ? (
+                  <>
+                    <button onClick={googleSignIn} disabled={!!gBusy} style={{ ...s.btn(true), width: "100%", justifyContent: "center", padding: "10px 16px" }}>
+                      {gBusy || "Sign in with Google — scan straight from Search Console"}
+                    </button>
+                    <div style={{ fontSize: 11.5, color: C.textTertiary, marginTop: 8, lineHeight: 1.5 }}>
+                      Read-only access. Your data goes from Google to this browser tab and nowhere else. <a href="/privacy.html" style={{ color: C.textTertiary }}>Privacy</a>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 6 }}>Pick a Search Console property:</div>
+                    <select value={gSite} onChange={(e) => setGSite(e.target.value)} style={{ width: "100%", padding: "8px 10px", border: `1px solid ${C.border}`, borderRadius: 6, fontSize: 13, fontFamily: sans, background: C.surface, color: C.text }}>
+                      {(gSites || []).map(x => <option key={x} value={x}>{x}</option>)}
+                    </select>
+                    <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                      <button onClick={googleScan} disabled={loading || !gSite} style={{ ...s.btn(true), flex: 1, justifyContent: "center" }}>{gBusy || (loading ? "Analyzing…" : "Scan last 90 days")}</button>
+                      <button onClick={googleSignOut} style={s.btn(false)}>Sign out</button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+            {GOOGLE_CLIENT_ID && <div style={{ fontSize: 11, color: C.textTertiary, margin: "4px 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>or upload files</div>}
             <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop} onClick={() => document.getElementById("csv-input").click()} style={s.dropzone(dragOver)}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#059669" + "14", color: "#059669", border: "1px solid #059669" + "30", fontFamily: mono, letterSpacing: "0.03em" }}>.CSV</span>
