@@ -147,7 +147,27 @@ function analyzeQueries(rows, opts = {}) {
       return { impr, clicks, pos };
     };
     const sa = side("a"), sb = side("b");
-    const [P, S, sp, ss] = sa.impr >= sb.impr ? [pr.a, pr.b, sa, sb] : [pr.b, pr.a, sb, sa];
+    let [P, S, sp, ss] = sa.impr >= sb.impr ? [pr.a, pr.b, sa, sb] : [pr.b, pr.a, sb, sa];
+
+    // Which page do the searches actually describe? Share of shared impressions whose
+    // query names a word only that page has ("dryer" on a dryer page vs an
+    // appliance-repair hub). The dedicated page should own them even if the broad
+    // page gets more impressions today.
+    const idP = identity.get(P), idS = identity.get(S);
+    const own = (id, other) => [...id].filter(t => !other.has(t));
+    const describes = (ownWords, key) => {
+      let hit = 0, all = 0;
+      pr.qs.forEach(x => {
+        const r = x.a.page === (key === "P" ? P : S) ? x.a : x.b;
+        const qt = new Set(tokenize(x.query));
+        all += r.impressions;
+        if (ownWords.some(t => qt.has(t))) hit += r.impressions;
+      });
+      return all ? hit / all : 0;
+    };
+    const specP = describes(own(idP, idS), "P"), specS = describes(own(idS, idP), "S");
+    const dedicatedLoses = specS >= 0.5 && specP < 0.2;
+    if (dedicatedLoses) [P, S, sp, ss] = [S, P, ss, sp];
     const page = (url, s) => ({
       url, clicks: s.clicks, impressions: s.impr, position: s.pos,
       ctr: s.impr ? +(100 * s.clicks / s.impr).toFixed(2) : 0,
@@ -183,11 +203,15 @@ function analyzeQueries(rows, opts = {}) {
 
     const pp = getPathname(P), sp_ = getPathname(S);
     let actionType, suggestedAction, recLong;
-    if (hubChild) {
+    if (dedicatedLoses) {
+      actionType = "ARCHITECTURE";
+      suggestedAction = "A broader page is taking searches that belong to the dedicated page — don't merge, point the broad page at it";
+      recLong = `The shared searches name what ${pp} is about, so ${pp} should own them. Keep both pages: take that service's phrasing out of ${sp_}'s title, H1 and intro, add a short line there linking to ${pp} with the exact phrase as anchor, and link back from ${pp} to ${sp_}. Never 301 the dedicated page into the broad one.`;
+    } else if (hubChild) {
       actionType = "ARCHITECTURE";
       suggestedAction = "Hub and its own child page share searches — sharpen roles, don't redirect";
       recLong = `${pp} and ${sp_} sit in the same folder branch. A hub should rank for the broad term and link down; the child should own the narrower term. Make the child's title, H1 and intro specific, and link hub → child with that exact anchor.`;
-    } else if (positionConflict) {
+    } else if (positionConflict && !dedicatedLoses) {
       actionType = "REVIEW";
       suggestedAction = "The page with fewer impressions ranks better — decide which one should own these searches";
       recLong = `${pp} gets more impressions on the shared searches, but ${sp_} ranks higher (pos ${ss.pos.toFixed(1)} vs ${sp.pos.toFixed(1)}). Pick the owner by intent and business value, not by today's traffic, then retarget the other page.`;
@@ -247,4 +271,13 @@ function pagesFromQueries(rows) {
   }));
 }
 
-export { analyzeQueries, pagesFromQueries };
+// Drop URL-pattern clusters whose pages are already reported by query data:
+// the query pair says the same thing with real numbers behind it.
+function dropCovered(queryConflicts, slugConflicts) {
+  const pairs = queryConflicts.map(c => new Set(c.pages.map(p => p.url)));
+  const covered = (c) => c.pages.length >= 2 && pairs.some(set => c.pages.filter(p => set.has(p.url)).length >= 2);
+  const kept = slugConflicts.filter(c => c.isTechnical || !covered(c));
+  return { kept, dropped: slugConflicts.length - kept.length };
+}
+
+export { analyzeQueries, pagesFromQueries, dropCovered };

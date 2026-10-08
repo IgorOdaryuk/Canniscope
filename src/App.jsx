@@ -2,10 +2,10 @@ import { useState } from "react";
 import Papa from "papaparse";
 
 import { analyzePages, getPathname, getSection } from "./lib/analyze.js";
-import { analyzeQueries, pagesFromQueries } from "./lib/queries.js";
+import { analyzeQueries, pagesFromQueries, dropCovered } from "./lib/queries.js";
 import { detectFile, buildDeadIndex, DEAD_ISSUE } from "./lib/files.js";
 import { generateReportText, generateCSV } from "./lib/report.js";
-import { judgeCluster, urlsToCheck } from "./lib/live.js";
+import { withLive, urlsToCheck } from "./lib/live.js";
 import { DEMO } from "./demo.js";
 
 const LIVE_CHUNK = 25;  // URLs per request to /api/check
@@ -394,9 +394,9 @@ export default function CanniScope() {
     const pageRows = pagesFromQueries(DEMO.queryRows);
     const slug = analyzePages(pageRows);
     const q = analyzeQueries(DEMO.queryRows, { brands: DEMO.brands });
-    const found = [...q.conflicts, ...slug.conflicts];
+    const found = [...q.conflicts, ...dropCovered(q.conflicts, slug.conflicts).kept];
     const live = new Map(DEMO.liveResults.map(r => [r.url, r]));
-    const judged = found.map(c => ({ ...c, live: judgeCluster(c, live) }));
+    const judged = found.map(c => withLive(c, live));
     setIgnoredCounts(slug.ignoredCounts); setTotalPages(slug.totalPages);
     setRunInfo({ hasQueries: true, queryStats: q.stats, deadCount: 0, resolved: 0, statusFiles: 0, notes: [`Example data for a made-up site (${DEMO.site}). Upload your own files to scan your site.`], totalImpr: 0, demo: true });
     setConflicts(judged); setReportText(generateReportText(judged));
@@ -423,7 +423,7 @@ export default function CanniScope() {
         setLiveCheck({ state: "running", done, total: urls.length });
       }));
     }
-    const judged = found.map(c => ({ ...c, live: judgeCluster(c, results) }));
+    const judged = found.map(c => withLive(c, results));
     setConflicts(judged); setReportText(generateReportText(judged));
     setLiveCheck({ state: failed === urls.length ? "error" : "done", done, total: urls.length, failed, skipped: Math.max(0, new Set(found.flatMap(c => c.pages.map(p => p.url))).size - urls.length) });
   };
@@ -469,7 +469,7 @@ export default function CanniScope() {
     const q = queryFile ? analyzeQueries(queryFile.rows, { isDead, brands }) : null;
 
     const totalImpr = pageRows.reduce((s, r) => s + (parseInt(String(r.Impressions).replace(/,/g, "")) || 0), 0);
-    const results = [...(q ? q.conflicts : []), ...slug.conflicts];
+    const results = q ? [...q.conflicts, ...dropCovered(q.conflicts, slug.conflicts).kept] : slug.conflicts;
     setIgnoredCounts(slug.ignoredCounts); setTotalPages(slug.totalPages);
     setRunInfo({
       hasQueries: !!q, queryStats: q ? q.stats : null, deadCount: dead.size,

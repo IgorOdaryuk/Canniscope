@@ -85,6 +85,8 @@ function judgeCluster(conflict, results) {
   // Nothing live at all but no errors: everything points elsewhere — fixed.
   return {
     verdict,
+    // When the live site already settled on one page, that page is the one to keep.
+    keepUrl: liveOnes.length === 1 ? liveOnes[0].url : null,
     pages: pages.map(p => ({ url: p.url, state: p.live, label: stateLabel(p.live) })),
     problems,
     done,
@@ -102,4 +104,16 @@ function urlsToCheck(conflicts, max = 300) {
   return out;
 }
 
-export { judgeCluster, urlsToCheck, pageState, samePage };
+// Attach the verdict to a cluster; if the live site already kept one page, mark it as KEEP.
+function withLive(c, results) {
+  const live = judgeCluster(c, results);
+  if (!live.keepUrl || live.verdict === "real" || c.winner.url === live.keepUrl) return { ...c, live };
+  const keep = c.pages.find(p => p.url === live.keepUrl);
+  return {
+    ...c, live, winner: keep,
+    loser: c.pages.find(p => p.url !== live.keepUrl),
+    pages: c.pages.map(p => ({ ...p, action: p.url === live.keepUrl ? "KEEP" : (p.action === "KEEP" ? c.actionType : p.action) })),
+  };
+}
+
+export { judgeCluster, withLive, urlsToCheck, pageState, samePage };

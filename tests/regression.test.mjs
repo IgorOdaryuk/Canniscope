@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { analyzePages } from "../src/lib/analyze.js";
 import { analyzeQueries } from "../src/lib/queries.js";
 import { detectFile, buildDeadIndex } from "../src/lib/files.js";
-import { judgeCluster } from "../src/lib/live.js";
+import { judgeCluster, withLive } from "../src/lib/live.js";
+import { dropCovered } from "../src/lib/queries.js";
 
 const S = "https://example.com";
 const page = (path, impressions = 100, clicks = 1, position = 10) =>
@@ -237,6 +238,33 @@ test("check failed for one page → not checked, stays in the main list", () => 
 });
 test("trailing slash only differs in canonical → still self-canonical", () => {
   assert.equal(judge({ ...ok(A), canonical: A.replace(/\/$/, "") }, ok(B)).verdict, "real");
+});
+
+test("a broad hub outranking the dedicated service page is never told to merge it", () => {
+  const rows = [
+    q("dryer repair austin", "/appliance-repair-austin-tx/", 140, 6.2, 2),
+    q("dryer repair austin", "/services/dryer-repair-austin-tx/", 90, 21.5),
+    q("dryer not heating repair austin tx", "/appliance-repair-austin-tx/", 60, 7.4),
+    q("dryer not heating repair austin tx", "/services/dryer-repair-austin-tx/", 55, 18.0),
+  ];
+  const c = analyzeQueries(rows).conflicts[0];
+  assert.ok(c);
+  assert.notEqual(c.actionType, "MERGE");
+  assert.equal(c.winner.url, S + "/services/dryer-repair-austin-tx/");
+});
+
+test("a URL-pattern cluster already reported by query data is not shown twice", () => {
+  const qc = [{ pages: [{ url: A }, { url: B }] }];
+  const sc = [{ pages: [{ url: A }, { url: B }] }, { pages: [{ url: S + "/x/" }, { url: S + "/y/" }] }];
+  assert.equal(dropCovered(qc, sc).kept.length, 1);
+});
+
+test("in an already-fixed pair the live page is the one marked KEEP", () => {
+  const c = { actionType: "MERGE", winner: { url: A }, pages: [{ url: A, action: "KEEP", clicks: 3 }, { url: B, action: "MERGE", clicks: 9 }] };
+  const r = withLive(c, new Map([[A, { url: A, status: 301, finalUrl: B, finalStatus: 200, hops: 1 }], [B, ok(B)]]));
+  assert.equal(r.live.verdict, "fixed");
+  assert.equal(r.winner.url, B);
+  assert.equal(r.pages.find(p => p.url === B).action, "KEEP");
 });
 
 if (failed) { console.log(`\n${failed} failed`); process.exit(1); }
