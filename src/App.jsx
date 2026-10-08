@@ -508,7 +508,7 @@ export default function CanniScope() {
               <div style={{ fontWeight: 600, color: C.text, marginBottom: 4, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>Files the scan understands</div>
               <b style={{ color: C.text }}>Pages.csv</b> — GSC → Performance → 3 months → Export → unzip.<br/>
               <b style={{ color: C.text }}>Query + page CSV</b> (recommended) — columns query, page, clicks, impressions, position. GSC's own export can't pair them; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.<br/>
-              <b style={{ color: C.text }}>Redirect / 404 list</b> (recommended) — GSC → Indexing → Pages → “Page with redirect” and “Not found (404)” → Export, or a Screaming Frog export with Status Code. Without it, URLs you already redirected show up as conflicts.
+              <b style={{ color: C.text }}>Redirect / 404 list</b> (optional) — not needed when the live check is on. Useful if your site blocks bots: GSC → Indexing → Pages → “Page with redirect” / “Not found (404)” → Export, or a Screaming Frog export with Status Code.
             </div>
           </div>
         </div>
@@ -525,7 +525,7 @@ export default function CanniScope() {
   const tech = active.filter(c => c.isTechnical);
   const high = [...queryC, ...seo].filter(c => c.risk === "HIGH").length;
   const medium = [...queryC, ...seo].filter(c => c.risk === "MEDIUM").length;
-  const totalURLs = new Set(conflicts.flatMap(c => c.pages.map(p => p.url))).size;
+  const totalURLs = new Set(active.flatMap(c => c.pages.map(p => p.url))).size;
 
   const actionCounts = active.reduce((acc, c) => {
     acc[c.actionType] = (acc[c.actionType] || 0) + 1;
@@ -580,7 +580,7 @@ export default function CanniScope() {
           {runInfo && runInfo.hasQueries && <>{queryC.length} competing in search · </>}{seo.length} same-target URLs · {tech.length} technical · {totalURLs} URLs involved
         </p>
 
-        {runInfo && (runInfo.statusFiles > 0 ? (
+        {runInfo && !(liveCheck && liveCheck.state === "done") && (runInfo.statusFiles > 0 ? (
           <div style={{ padding: "8px 12px", background: C.lowBg, border: `1px solid ${C.lowBorder}`, borderRadius: 6, marginBottom: 8, fontSize: 12, color: C.low }}>
             {runInfo.deadCount.toLocaleString()} redirected / removed URLs left out{runInfo.resolved > 0 ? ` · ${runInfo.resolved} clusters already resolved by those redirects` : ""}.
           </div>
@@ -623,8 +623,8 @@ export default function CanniScope() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 320px), 1fr))", gap: 8, marginBottom: 16 }}>
-          <DistributionBar conflicts={conflicts} />
-          <SectionTree conflicts={conflicts} />
+          <DistributionBar conflicts={active} />
+          <SectionTree conflicts={active} />
         </div>
 
         {topActions.length > 0 && (
