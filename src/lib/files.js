@@ -20,8 +20,15 @@ const POS_COLS = ["position", "average position", "avg. position", "avg position
 const STATUS_COLS = ["status code", "status", "http status", "http status code", "response code"];
 const TARGET_COLS = ["redirect url", "redirect uri", "location", "final url", "redirect target"];
 
+// Numbers as GSC exports them in any UI language: "1,234" / "1.234" / "1 234"
+// for thousands, "6.4" / "6,4" for decimals, "12,5 %" for CTR.
 const num = (v) => {
-  const n = parseFloat(String(v ?? "").replace(/,/g, "").replace("%", ""));
+  let t = String(v ?? "").replace(/[%\s\u00a0\u202f]/g, "");
+  if (/^-?\d{1,3}([.,]\d{3})+$/.test(t) && !/^-?\d{1,3}[.,]\d{3}$/.test(t.replace(/[.,]\d{3}(?=[.,])/g, ""))) t = t.replace(/[.,]/g, "");
+  else if (/^-?\d{1,3}([.,])\d{3}$/.test(t)) t = t.replace(/[.,]/, "");
+  else if (t.includes(",") && !t.includes(".")) t = t.replace(",", ".");
+  else t = t.replace(/,/g, "");
+  const n = parseFloat(t);
   return Number.isFinite(n) ? n : 0;
 };
 
@@ -52,17 +59,41 @@ function mergeRows(rows, keyOf) {
   return [...m.values()].map(({ _pw, ...r }) => ({ ...r, position: r.impressions ? _pw / r.impressions : r.position }));
 }
 
+// GSC exports in the user's UI language ("Häufigste Seiten", "Klicks"…).
+// When headers aren't recognised, use the fixed GSC column order instead:
+// [query], page, clicks, impressions, CTR, position.
+function byContent(rows, headers) {
+  if (!rows.length || headers.length < 4) return null;
+  const sample = rows.slice(0, 50);
+  const isUrl = (h) => sample.filter(r => /^https?:\/\//i.test(String(r[h] || "").trim())).length >= sample.length * 0.8;
+  const pi = headers.findIndex(isUrl);
+  if (pi < 0) return null;
+  const after = headers.slice(pi + 1);
+  if (after.length < 2) return null;
+  const qi = pi > 0 ? 0 : -1;
+  return {
+    q: qi >= 0 ? headers[qi] : null, p: headers[pi],
+    c: after[0], im: after[1], ctr: after.length >= 4 ? after[2] : null, pos: after.length >= 4 ? after[3] : after[2] || null,
+  };
+}
+
 // Returns { kind, ... } for one parsed CSV.
 // kind: "pages" | "queries" | "status" | "meta" | "unknown"
 function detectFile(rows, fields) {
   const headers = fields && fields.length ? fields : Object.keys(rows[0] || {});
-  const q = findCol(headers, QUERY_COLS);
-  const p = findCol(headers, PAGE_COLS);
-  const im = findCol(headers, IMPR_COLS);
+  let q = findCol(headers, QUERY_COLS);
+  let p = findCol(headers, PAGE_COLS);
+  let im = findCol(headers, IMPR_COLS);
+  let guessed = null;
+  if (!p || !im) {
+    guessed = byContent(rows, headers);
+    if (guessed && /\d/.test(String(rows[0]?.[guessed.im] ?? ""))) { q = guessed.q; p = guessed.p; im = guessed.im; }
+    else guessed = null;
+  }
 
   if (q && p && im) {
-    const c = findCol(headers, CLICK_COLS);
-    const pos = findCol(headers, POS_COLS);
+    const c = guessed ? guessed.c : findCol(headers, CLICK_COLS);
+    const pos = guessed ? guessed.pos : findCol(headers, POS_COLS);
     const raw = rows.map(r => ({
       query: String(r[q] || "").trim(),
       page: normalizeUrl(r[p]),
@@ -76,9 +107,9 @@ function detectFile(rows, fields) {
 
   if (p && im && !q) {
     // Pages.csv from GSC uses "Top pages"; map other exports onto the same shape.
-    const c = findCol(headers, CLICK_COLS);
-    const pos = findCol(headers, POS_COLS);
-    const ctr = findCol(headers, ["ctr"]);
+    const c = guessed ? guessed.c : findCol(headers, CLICK_COLS);
+    const pos = guessed ? guessed.pos : findCol(headers, POS_COLS);
+    const ctr = guessed ? guessed.ctr : findCol(headers, ["ctr"]);
     const raw = rows.map(r => ({
       page: normalizeUrl(r[p]),
       clicks: c ? num(r[c]) : 0,

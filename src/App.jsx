@@ -1,5 +1,6 @@
 import { useState } from "react";
 import Papa from "papaparse";
+import { unzipSync, strFromU8 } from "fflate";
 
 import { analyzePages, getPathname, getSection } from "./lib/analyze.js";
 import { analyzeQueries, pagesFromQueries, dropCovered } from "./lib/queries.js";
@@ -417,6 +418,9 @@ function SimpleCard({ conflict }) {
           </div>
         ))}
       </div>
+      {conflict.live && conflict.live.verdict === "unchecked" && (
+        <div style={{ fontSize: 12.5, color: C.textTertiary, marginBottom: 8 }}>We couldn't open one of these pages to double-check, so this one may already be fixed.</div>
+      )}
       {[["What's happening", e.what], ["Why it matters", e.why], ["If you leave it", e.ifLeft], ["What to do", e.todo]].map(([h, t]) => (
         <div key={h} style={{ fontSize: 14, lineHeight: 1.6, marginBottom: 8, color: h === "What to do" ? C.text : C.textSecondary }}>
           <b style={{ color: C.text }}>{h}:</b> {t}
@@ -527,11 +531,27 @@ export default function CanniScope() {
 
   const processFiles = async (files) => {
     setError(null); setCleanMsg(null); setLoading(true); setCopied(false);
-    const csvFiles = Array.from(files).filter(f => f.name.toLowerCase().endsWith(".csv"));
-    if (csvFiles.length === 0) { setError("No CSV files found."); setLoading(false); return; }
+    // GSC's Export button gives a .zip — open it here, no need to unzip first.
+    const csvFiles = [];
+    for (const f of Array.from(files)) {
+      const n = f.name.toLowerCase();
+      if (n.endsWith(".csv")) csvFiles.push({ file: f, text: null });
+      else if (n.endsWith(".zip")) {
+        try {
+          const entries = unzipSync(new Uint8Array(await f.arrayBuffer()));
+          Object.entries(entries).forEach(([name, data]) => {
+            if (name.toLowerCase().endsWith(".csv") && !name.startsWith("__MACOSX")) {
+              const folder = (f.webkitRelativePath || f.name) + "/" + name.split("/").slice(0, -1).join("/");
+              csvFiles.push({ file: { name: name.split("/").pop(), webkitRelativePath: folder + "/" + name.split("/").pop() }, text: strFromU8(data) });
+            }
+          });
+        } catch { setError(`Couldn't open ${f.name}. Is it a zip from Search Console?`); setLoading(false); return; }
+      }
+    }
+    if (csvFiles.length === 0) { setError("That's not a Search Console file. In Search Console: Performance → Export → Download CSV, then drop the downloaded file here."); setLoading(false); return; }
 
-    const parsed = await Promise.all(csvFiles.map(file => new Promise(resolve => {
-      Papa.parse(file, {
+    const parsed = await Promise.all(csvFiles.map(({ file, text }) => new Promise(resolve => {
+      Papa.parse(text ?? file, {
         header: true, skipEmptyLines: true,
         complete: (res) => resolve({ file, ...detectFile(res.data, res.meta.fields) }),
         error: () => resolve({ file, kind: "unknown" }),
@@ -553,7 +573,7 @@ export default function CanniScope() {
     const pagesFile = parsed.find(x => x.kind === "pages");
     const queryFile = parsed.find(x => x.kind === "queries");
     if (!pagesFile && !queryFile) {
-      setError("Couldn't find page data. Upload Pages.csv from the GSC Performance export, or a query + page CSV.");
+      setError("We couldn't find your pages in that file. In Search Console open Performance → Export → Download CSV and drop the downloaded file here as it is.");
       setLoading(false); return;
     }
 
@@ -636,8 +656,8 @@ export default function CanniScope() {
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#059669" + "14", color: "#059669", border: "1px solid #059669" + "30", fontFamily: mono, letterSpacing: "0.03em" }}>.CSV</span>
               </div>
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>{loading ? "Checking your site…" : "Drop your Search Console file here"}</div>
-              <div style={{ fontSize: 12, color: C.textTertiary }}>Google Search Console → Performance → Export → CSV · or click to choose</div>
-              <input id="csv-input" type="file" multiple accept=".csv" onChange={onFileSelect} style={{ display: "none" }} />
+              <div style={{ fontSize: 12, color: C.textTertiary }}>Search Console → Performance → Export → Download CSV · drop the file as it is, zip is fine</div>
+              <input id="csv-input" type="file" multiple accept=".csv,.zip" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
             <button onClick={runDemo} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8, padding: "10px 14px", color: C.accent, borderColor: C.accentBorder }}>Not sure? See an example first →</button>
             {error && <div style={{ marginTop: 16, padding: "10px 14px", background: C.highBg, border: `1px solid ${C.highBorder}`, borderRadius: 6, fontSize: 13, color: C.high }}>{error}</div>}
@@ -683,6 +703,7 @@ export default function CanniScope() {
               <a href="https://odariuk.com" target="_blank" rel="noopener" style={{ fontSize: 12, color: C.textSecondary, textDecoration: "none" }}>by <span style={{ color: C.accent, fontWeight: 600 }}>Igor Odariuk</span></a>
             </div>
             <div style={{ display: "flex", gap: 6 }}>
+              {cards.length > 0 && <button onClick={() => { navigator.clipboard.writeText(cards.map((c, i) => { const e = explain(c); return `${i + 1}. ${e.title}\n${e.pages.map(p => `${p.label}: ${p.path}`).join("\n")}\n${e.devNote}`; }).join("\n\n")); setCopied(true); setTimeout(() => setCopied(false), 2000); }} style={s.btn(false)}>{copied ? "✓ Copied" : "Copy all notes"}</button>}
               <button onClick={() => setShowTech(true)} style={s.btn(false)}>Technical details</button>
               <button onClick={reset} style={s.btn(false)}>Check another site</button>
             </div>
@@ -693,14 +714,19 @@ export default function CanniScope() {
             <h2 style={{ fontSize: 24, fontWeight: 700, color: C.text, margin: "0 0 8px" }}>Checking your pages… {liveCheck.done} / {liveCheck.total}</h2>
           ) : (
             <h2 style={{ fontSize: 26, fontWeight: 700, color: C.text, margin: "0 0 8px", letterSpacing: "-0.02em" }}>
-              {cards.length === 0 ? "Nothing to fix. Your pages don't compete with each other." : `${cards.length} thing${cards.length === 1 ? "" : "s"} to fix on your site`}
+              {cards.length === 0
+                ? (runInfo && !runInfo.hasQueries && !runInfo.demo ? "Nothing found in the quick check" : "Nothing to fix. Your pages don't compete with each other.")
+                : `${cards.length} thing${cards.length === 1 ? "" : "s"} to fix on your site`}
             </h2>
           )}
           {!running && fixed.length > 0 && (
             <div style={{ fontSize: 14, color: "#059669", marginBottom: 8 }}>✓ {fixed.length} older issue{fixed.length === 1 ? " is" : "s are"} already fixed on your site. Nothing to do there.</div>
           )}
           {!running && runInfo && !runInfo.hasQueries && !runInfo.demo && (
-            <div style={{ fontSize: 13, color: C.textSecondary, margin: "8px 0", lineHeight: 1.5 }}>We only had your page list, so these are pages that <i>look</i> alike. Signing in with Google lets us see which searches each page gets and find the real fights.</div>
+            <div style={{ padding: "12px 14px", background: C.medBg, border: `1px solid ${C.medBorder}`, borderRadius: 8, fontSize: 13.5, color: C.text, margin: "10px 0", lineHeight: 1.55 }}>
+              <b>This was a quick check.</b> Search Console's export only lists your pages, not which searches each page shows up for, so we can't see most pages that compete with each other. A short list here doesn't mean your site is fine.
+              {GOOGLE_CLIENT_ID && <> <button onClick={reset} style={{ background: "none", border: "none", padding: 0, color: C.accent, cursor: "pointer", fontSize: 13.5, fontFamily: sans, textDecoration: "underline" }}>Sign in with Google for the full check</button>.</>}
+            </div>
           )}
 
           <div style={{ marginTop: 20 }}>

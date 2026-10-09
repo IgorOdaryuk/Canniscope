@@ -9,6 +9,20 @@ const MAX_URLS = 300;
 const MAX_HOPS = 5;
 const TIMEOUT_MS = 8000;
 const CONCURRENCY = 4;
+// Only the CanniScope page may call this; it is not a public crawler.
+const ALLOWED_ORIGIN = /^https:\/\/(canniscope\.odariuk\.com|canniscope[a-z0-9-]*-ihorodariuks-projects\.vercel\.app)$|^http:\/\/localhost(:\d+)?$/;
+const RATE_WINDOW_MS = 10 * 60 * 1000;
+const RATE_MAX = 40; // requests per IP per window (a 300-URL scan is 12 requests)
+const hits = new Map();
+function limited(ip) {
+  const now = Date.now();
+  const list = (hits.get(ip) || []).filter(t => now - t < RATE_WINDOW_MS);
+  list.push(now);
+  hits.set(ip, list);
+  if (hits.size > 5000) hits.clear();
+  return list.length > RATE_MAX;
+}
+
 const UA = "Mozilla/5.0 (compatible; CanniScopeBot/1.0; +https://canniscope.odariuk.com)";
 
 // Block requests to private networks (SSRF): only public hosts may be checked.
@@ -100,6 +114,10 @@ async function checkUrl(url) {
 export default async function handler(req, res) {
   res.setHeader("cache-control", "no-store");
   if (req.method !== "POST") { res.status(405).json({ error: "POST only" }); return; }
+  const origin = req.headers?.origin || "";
+  if (!ALLOWED_ORIGIN.test(origin)) { res.status(403).json({ error: "use https://canniscope.odariuk.com" }); return; }
+  const ip = String(req.headers?.["x-forwarded-for"] || "").split(",")[0].trim() || "unknown";
+  if (limited(ip)) { res.status(429).json({ error: "too many checks, try again in a few minutes" }); return; }
   let body = req.body;
   if (typeof body === "string") { try { body = JSON.parse(body); } catch { body = null; } }
   const urls = Array.isArray(body?.urls) ? [...new Set(body.urls.filter(u => typeof u === "string"))] : [];

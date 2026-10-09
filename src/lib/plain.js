@@ -33,7 +33,7 @@ function explain(c) {
       kind: "broken",
       title: "A page you deleted still gets visitors",
       pages: [{ label: "Deleted page", path: U }, ...(i.keep ? [{ label: "Send them here", path: path(i.keep) }] : [])],
-      what: `This page was removed, but Google still sends people to it: ${i.clicks} visit${i.clicks === 1 ? "" : "s"} in the last 3 months. They see “page not found”.`,
+      what: `This page was removed, but Google still sends people to it: ${i.clicks} visit${i.clicks === 1 ? "" : "s"} in the period your data covers. They see “page not found”.`,
       why: "Those are people who were looking for you and found you. Right now they hit a dead end.",
       ifLeft: "Visitors keep leaving from an error page, and after a while Google drops the page together with everything it had earned in search.",
       todo: `Ask your web person to forward the deleted page to ${i.keep ? "the page listed above" : "the closest page that still exists"}. It takes a few minutes.`,
