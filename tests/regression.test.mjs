@@ -76,6 +76,39 @@ test("URLs on the redirect list are left out and counted as resolved", () => {
   assert.equal(res.ignoredCounts.dead, 1);
 });
 
+test("city in a folder: same service in two cities is not a duplicate", () => {
+  const res = analyzePages([
+    page("/locations/ga/atlanta/appliance-repair/", 500, 5, 4),
+    page("/locations/ga/marietta/appliance-repair/", 300, 3, 6),
+    page("/locations/tx/dallas/appliance-repair/", 200, 2, 8),
+  ]);
+  assert.equal(res.conflicts.filter(c => !c.isTechnical).length, 0);
+});
+
+test("city in a folder still matches the same city named in a slug", () => {
+  const res = analyzePages([
+    page("/locations/ga/atlanta/dryer-repair/", 500, 5, 4),
+    page("/dryer-repair-atlanta-ga/", 400, 4, 5),
+  ]);
+  assert.ok(findCluster(res, "/locations/ga/atlanta/dryer-repair/", "/dryer-repair-atlanta-ga/"));
+});
+
+test("same city in folders of two states never share a cluster", () => {
+  const res = analyzePages([
+    page("/locations/ga/columbus/washer-repair/"),
+    page("/locations/oh/columbus/washer-repair/"),
+  ]);
+  assert.equal(res.conflicts.filter(c => !c.isTechnical).length, 0);
+});
+
+test("a plain category folder is not read as a city", () => {
+  const res = analyzePages([
+    page("/appliances/oven-repair/", 500, 5, 4),
+    page("/services/oven-repair/", 400, 4, 5),
+  ]);
+  assert.ok(findCluster(res, "/appliances/oven-repair/", "/services/oven-repair/"));
+});
+
 test("informational pages are counted as informational", () => {
   const res = analyzePages([page("/about-us/"), page("/contact-us/")]);
   assert.equal(res.ignoredCounts.informational, 2);

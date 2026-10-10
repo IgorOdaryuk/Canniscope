@@ -64,6 +64,10 @@ const SAFE_STATES = new Set([
   "va","wa","wv","wi","wy","dc",
 ]);
 
+// Full list for folders only: a folder named exactly "in" or "oh" is a state, not a word.
+const US_STATES = new Set(("al ak az ar ca co ct de fl ga hi id il in ia ks ky la me md ma mi mn ms mo mt ne nv nh nj nm ny nc nd oh ok or pa ri sc sd tn tx ut vt va wa wv wi wy dc").split(" "));
+const US_STATE_NAMES = new Set(("alabama alaska arizona arkansas california colorado connecticut delaware florida georgia hawaii idaho illinois indiana iowa kansas kentucky louisiana maine maryland massachusetts michigan minnesota mississippi missouri montana nebraska nevada new-hampshire new-jersey new-mexico new-york north-carolina north-dakota ohio oklahoma oregon pennsylvania rhode-island south-carolina south-dakota tennessee texas utah vermont virginia washington west-virginia wisconsin wyoming").split(" "));
+
 // ─── TOKEN MATCHING HELPERS ───
 
 function slugContainsPattern(slug, pattern) {
@@ -117,13 +121,22 @@ function classifyURL(url) {
     // e.g. /blog/ja/mac-disk-repair-software → locale "ja". Keep it so language
     // variants of the SAME slug are never grouped as cannibalization (hreflang pairs).
     let locale = "en";
-    if (parts.length > 1 && LOCALE_CODES.has(parts[0])) {
+    // Under /locations/ and /service-area/ "ga" is Georgia, not Irish.
+    const inGeoSection = section === "LOCATIONS" || section === "SERVICE-AREA";
+    if (parts.length > 1 && LOCALE_CODES.has(parts[0]) && !(inGeoSection && US_STATES.has(parts[0]))) {
       locale = parts.shift();
     }
 
-    if (section === "LOCATIONS" && parts.length > 1) {
-      parts.shift();
-    }
+    // ── GEO FROM FOLDERS ──
+    // /locations/ga/atlanta/appliance-repair/ names the city in a folder, not in the slug.
+    // Read folders as geo only where they are clearly places: a location section,
+    // or a path that has a state-code folder. Plain category folders stay out.
+    const folders = parts.slice(0, -1);
+    const folderState = folders.find(f => US_STATES.has(f)) || null;
+    const folderGeoOk = inGeoSection || !!folderState;
+    const folderCity = folderGeoOk
+      ? [...folders].reverse().find(f => !US_STATES.has(f) && !US_STATE_NAMES.has(f)) || null
+      : null;
 
     const slug = parts[parts.length - 1] || "";
     if (!slug || slug.length < 3) return null;
@@ -199,6 +212,13 @@ function classifyURL(url) {
     const cleanService = service.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-");
     let geo = geoRaw ? geoRaw.replace(/^-+|-+$/g, "").replace(/-{2,}/g, "-") : null;
     if (!cleanService || cleanService.length < 3) return null;
+
+    // The slug wins; folders only fill what the slug left out.
+    // A state folder belongs to the folder city, not to a city named in the slug.
+    if (!geo && folderCity) {
+      geo = folderCity;
+      if (!state && folderState) state = folderState;
+    }
 
     // "miami-city" is usually the same target as "miami". Group them, but flag
     // the match as loose so it never produces an automatic redirect.
