@@ -651,24 +651,12 @@ export default function CanniScope() {
               </div>
             )}
             {GOOGLE_CLIENT_ID && <div style={{ fontSize: 11, color: C.textTertiary, margin: "4px 0 10px", textTransform: "uppercase", letterSpacing: "0.05em" }}>or upload files</div>}
-            <div style={{ ...s.card, padding: "16px 18px", marginBottom: 12, textAlign: "left", borderColor: C.accentBorder }}>
-              <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 6 }}>Get the full check (about 5 minutes)</div>
-              <div style={{ fontSize: 13, color: C.textSecondary, lineHeight: 1.55, marginBottom: 10 }}>
-                The normal Search Console export doesn't say which searches each page shows up for. Without that, CanniScope can only do a quick check and will miss most problems. Here's how to get it for free:
-              </div>
-              <ol style={{ fontSize: 13, color: C.text, lineHeight: 1.65, paddingLeft: 18, margin: 0 }}>
-                <li>Open a new Google Sheet and install the free add-on <a href="https://searchanalyticsforsheets.com/" target="_blank" rel="noopener" style={{ color: C.accent }}>Search Analytics for Sheets</a>.</li>
-                <li>In the sheet: Extensions (or Add-ons) → Search Analytics for Sheets → Open Sidebar.</li>
-                <li>Pick your site and the last 3 months. Under <b>Group by</b> add <b>Queries</b> and <b>Pages</b>. Click <b>Request Data</b>.</li>
-                <li>File → Download → CSV, and drop that file below.</li>
-              </ol>
-            </div>
             <div onDragOver={(e) => { e.preventDefault(); setDragOver(true); }} onDragLeave={() => setDragOver(false)} onDrop={onDrop} onClick={() => document.getElementById("csv-input").click()} style={s.dropzone(dragOver)}>
               <div style={{ display: "inline-flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
                 <span style={{ fontSize: 10, fontWeight: 700, padding: "3px 8px", borderRadius: 4, background: "#059669" + "14", color: "#059669", border: "1px solid #059669" + "30", fontFamily: mono, letterSpacing: "0.03em" }}>.CSV</span>
               </div>
               <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 3 }}>{loading ? "Checking your site…" : "Drop your file here"}</div>
-              <div style={{ fontSize: 12, color: C.textTertiary }}>The file from the add-on (full check) · or Search Console → Performance → Export (quick check, zip is fine)</div>
+              <div style={{ fontSize: 12, color: C.textTertiary }}>Search Console → Performance → Export (zip is fine) · or any CSV with query and page columns</div>
               <input id="csv-input" type="file" multiple accept=".csv,.zip" onChange={onFileSelect} style={{ display: "none" }} />
             </div>
             <button onClick={runDemo} style={{ ...s.btn(false), width: "100%", justifyContent: "center", marginTop: 8, padding: "10px 14px", color: C.accent, borderColor: C.accentBorder }}>Not sure? See an example first →</button>
@@ -686,7 +674,7 @@ export default function CanniScope() {
             <div style={{ marginTop: 12, padding: "14px 18px", background: C.surface, borderRadius: 8, border: `1px solid ${C.border}`, fontSize: 13, color: C.textSecondary, lineHeight: 1.8, textAlign: "left" }}>
               <div style={{ fontWeight: 600, color: C.text, marginBottom: 4, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em" }}>Files the scan understands</div>
               <b style={{ color: C.text }}>Pages.csv</b> — GSC → Performance → 3 months → Export → unzip.<br/>
-              <b style={{ color: C.text }}>Query + page CSV</b> (recommended) — columns query, page, clicks, impressions, position. GSC's own export can't pair them; use the Search Console API, Looker Studio or the Search Analytics for Sheets add-on.<br/>
+              <b style={{ color: C.text }}>Query + page CSV</b> (recommended) — columns query, page, clicks, impressions, position. GSC's own export can't pair them; pull them from the Search Console API.<br/>
               <b style={{ color: C.text }}>Redirect / 404 list</b> (optional) — not needed when the live check is on. Useful if your site blocks bots: GSC → Indexing → Pages → “Page with redirect” / “Not found (404)” → Export, or a Screaming Frog export with Status Code.
             </div>
             </details>
@@ -736,7 +724,7 @@ export default function CanniScope() {
           )}
           {!running && runInfo && !runInfo.hasQueries && !runInfo.demo && (
             <div style={{ padding: "12px 14px", background: C.medBg, border: `1px solid ${C.medBorder}`, borderRadius: 8, fontSize: 13.5, color: C.text, margin: "10px 0", lineHeight: 1.55 }}>
-              <b>This was a quick check.</b> Search Console's export only lists your pages, not which searches each page shows up for, so we can't see most pages that compete with each other. A short list here doesn't mean your site is fine. <button onClick={reset} style={{ background: "none", border: "none", padding: 0, color: C.accent, cursor: "pointer", fontSize: 13.5, fontFamily: sans, textDecoration: "underline" }}>See how to get the full check</button> (free, about 5 minutes).
+              <b>This was a quick check.</b> Search Console's export only lists your pages, not which searches each page shows up for, so we can't see most pages that compete with each other. A short list here doesn't mean your site is fine.
               {GOOGLE_CLIENT_ID && <> <button onClick={reset} style={{ background: "none", border: "none", padding: 0, color: C.accent, cursor: "pointer", fontSize: 13.5, fontFamily: sans, textDecoration: "underline" }}>Sign in with Google for the full check</button>.</>}
             </div>
           )}

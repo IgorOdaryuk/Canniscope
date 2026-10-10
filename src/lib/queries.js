@@ -1,6 +1,6 @@
 // ─── QUERY OVERLAP MODE ───
 // Real cannibalization = two of your pages getting impressions for the same search.
-// Input: query + page rows (GSC API, Looker Studio, Search Analytics for Sheets).
+// Input: query + page rows (Search Console API or any CSV with query and page columns).
 
 import { getPathname, getSection } from "./analyze.js";
 
